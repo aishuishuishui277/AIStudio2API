@@ -41,6 +41,13 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale, errorText, logText } = useI18n()
+// Android uses the native document picker; desktop browser login is unavailable.
+const androidBuild = import.meta.env.VITE_ANDROID_STANDALONE === '1'
+const androidImportHelp = computed(() =>
+  locale.value.startsWith('zh')
+    ? 'Android 版请返回 APK 主界面，点击“导入 Windows 账号状态 JSON”。当前不支持浏览器登录，无需增加系统权限。'
+    : 'On Android, return to the app home screen and select Import Windows account state JSON. Browser sign-in is unavailable; extra system permissions will not enable it.',
+)
 const defaultAccountLocale = navigator.language
 const defaultAccountTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
 const showEditor = ref(false)
@@ -684,7 +691,7 @@ async function refreshAllAccounts(): Promise<void> {
           }}</span>
           <template v-else>{{ t('accounts.refreshAll') }}</template>
         </button>
-        <DropdownMenuRoot :modal="false">
+        <DropdownMenuRoot v-if="!androidBuild" :modal="false">
           <DropdownMenuTrigger
             class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:opacity-50"
             :disabled="pendingAction !== ''"
@@ -718,6 +725,9 @@ async function refreshAllAccounts(): Promise<void> {
       </div>
     </header>
     <div class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col p-4 md:p-8">
+      <p v-if="androidBuild" class="mb-3 rounded border border-line bg-panel p-3 text-sm text-gray-300">
+        {{ androidImportHelp }}
+      </p>
       <div class="mb-3 flex flex-wrap items-center gap-2">
         <input
           v-model="search"
@@ -768,7 +778,7 @@ async function refreshAllAccounts(): Promise<void> {
         class="rounded border border-line bg-panel py-10 text-center text-gray-500"
       >
         <p class="mb-2">{{ t('accounts.empty') }}</p>
-        <p class="text-xs">{{ t('accounts.emptyHint') }}</p>
+        <p v-if="!androidBuild" class="text-xs">{{ t('accounts.emptyHint') }}</p>
       </div>
       <div
         v-else-if="visibleAccounts.length === 0"

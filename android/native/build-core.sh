@@ -14,6 +14,8 @@ test -f "$SPIDERMONKEY_ROOT/lib/libjsrust.a"
 native_stamp=$(sha256sum "$SPIDERMONKEY_ROOT/lib/libjs_static.a" "$SPIDERMONKEY_ROOT/lib/libjsrust.a" | sha256sum | cut -c1-16)
 export CGO_CXXFLAGS="-I$SPIDERMONKEY_ROOT/include -DAISTUDIO_ANDROID_NATIVE_BUILD=0x$native_stamp"
 cd "$repo"
+# Rebuild with Android-only account guidance; ordinary desktop builds keep their menus.
+VITE_ANDROID_STANDALONE=1 npm --prefix web run build
 test -f internal/webui/dist/index.html
 out=android/app/src/main/jniLibs/arm64-v8a
 mkdir -p "$out"

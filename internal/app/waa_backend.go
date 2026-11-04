@@ -41,7 +41,7 @@ func prepareWAABackend(ctx context.Context, cfg config.Config, requests *request
 type androidUnavailableLogin struct{}
 
 func (androidUnavailableLogin) Login(context.Context, aistudio.IsolatedLoginRequest) (aistudio.IsolatedLoginResult, error) {
-	return aistudio.IsolatedLoginResult{}, fmt.Errorf("Android browser login is unavailable; import account state from the Android app")
+	return aistudio.IsolatedLoginResult{}, fmt.Errorf("Android 不支持浏览器登录；请返回 APK 主界面点击“导入 Windows 账号状态 JSON”，无需增加系统权限")
 }
 
 // removeStaleCamoufoxProfiles 清理上次进程遗留的 Camoufox profile
