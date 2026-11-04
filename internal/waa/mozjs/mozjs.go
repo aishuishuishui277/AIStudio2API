@@ -7,8 +7,10 @@ package mozjs
 #cgo windows,amd64 LDFLAGS: -ljs_static -ljsrust -Wl,-Bstatic -lc++ -lunwind -Wl,-Bdynamic -lws2_32 -lwinmm -lpsapi -ldbghelp -lntdll -luserenv -lbcrypt -ladvapi32 -lshell32 -lole32 -loleaut32 -luuid -lsynchronization
 #cgo linux,amd64 CXXFLAGS: -DXP_UNIX -DXP_LINUX
 #cgo linux,amd64 LDFLAGS: -ljs_static -ljsrust -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm -ldl -lpthread
-#cgo linux,arm64 CXXFLAGS: -DXP_UNIX -DXP_LINUX
-#cgo linux,arm64 LDFLAGS: -ljs_static -ljsrust -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm -ldl -lpthread
+#cgo linux,!android,arm64 CXXFLAGS: -DXP_UNIX -DXP_LINUX
+#cgo linux,!android,arm64 LDFLAGS: -ljs_static -ljsrust -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm -ldl -lpthread
+#cgo android,arm64 CXXFLAGS: -DXP_UNIX -DXP_LINUX -DANDROID
+#cgo android,arm64 LDFLAGS: -ljs_static -ljsrust -lc++_shared -lm -ldl -llog
 #cgo darwin,amd64 CXXFLAGS: -DXP_UNIX -DXP_DARWIN -DXP_MACOSX
 #cgo darwin,amd64 LDFLAGS: -ljs_static -ljsrust -lc++ -framework CoreFoundation -framework Security
 #cgo darwin,arm64 CXXFLAGS: -DXP_UNIX -DXP_DARWIN -DXP_MACOSX

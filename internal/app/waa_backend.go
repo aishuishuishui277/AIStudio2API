@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,12 @@ import (
 
 // prepareWAABackend 按 WAA 后端准备运行依赖与账户登录驱动
 func prepareWAABackend(ctx context.Context, cfg config.Config, requests *requestRegistry, accounts int, proxy string) (string, aistudio.IsolatedLoginDriver, error) {
+	if runtime.GOOS == "android" {
+		if cfg.WAABackend != config.WAABackendSpiderMonkey {
+			return "", nil, fmt.Errorf("Android requires WAA_BACKEND=spidermonkey")
+		}
+		return "", androidUnavailableLogin{}, nil
+	}
 	if cfg.WAABackend == config.WAABackendSpiderMonkey {
 		requests.log("service", "INFO", fmt.Sprintf("运行时装配 | 2/3 | WAA 后端=spidermonkey | 账户=%d", accounts))
 		return "", &lazyLoginDriver{timeout: cfg.RequestTimeout, proxy: proxy}, nil
@@ -29,6 +36,12 @@ func prepareWAABackend(ctx context.Context, cfg config.Config, requests *request
 		return "", nil, err
 	}
 	return camoufoxPath, login, nil
+}
+
+type androidUnavailableLogin struct{}
+
+func (androidUnavailableLogin) Login(context.Context, aistudio.IsolatedLoginRequest) (aistudio.IsolatedLoginResult, error) {
+	return aistudio.IsolatedLoginResult{}, fmt.Errorf("Android browser login is unavailable; import account state from the Android app")
 }
 
 // removeStaleCamoufoxProfiles 清理上次进程遗留的 Camoufox profile

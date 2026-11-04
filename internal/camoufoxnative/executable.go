@@ -12,6 +12,9 @@ import (
 
 // FindExecutable 定位与 camoufoxRelease 同版本的 Camoufox，都没有时经 proxy 下载，proxy 为空时直连
 func FindExecutable(ctx context.Context, proxy string) (string, error) {
+	if runtime.GOOS == "android" {
+		return "", errors.New("Android does not download or launch desktop Camoufox; import account state instead")
+	}
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

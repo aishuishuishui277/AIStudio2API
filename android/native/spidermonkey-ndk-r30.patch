@@ -1,0 +1,6 @@
+diff --git a/python/mozboot/mozboot/android.py b/python/mozboot/mozboot/android.py
+--- a/python/mozboot/mozboot/android.py
++++ b/python/mozboot/mozboot/android.py
+@@ -28 +28 @@
+-NDK_VERSION = "r29"
++NDK_VERSION = "r30"
