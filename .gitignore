@@ -29,3 +29,13 @@ go.work.sum
 .idea/
 .DS_Store
 Thumbs.db
+
+# Android local build state and signing material
+/android/.gradle/
+/android/.kotlin/
+/android/local.properties
+/android/build/
+/android/app/build/
+/android/app/src/main/jniLibs/
+*.jks
+*.keystore
