@@ -87,6 +87,7 @@ const sections: {
       'build_native_nonstream',
       'nonstream_keepalive',
       'fake_stream',
+      'fake_stream_models',
       'youtube_links',
       'search_model_aliases',
       'google_search',
@@ -789,6 +790,22 @@ async function saveConfig(): Promise<void> {
               :env="environmentKey('fake_stream')"
             >
               <UiSwitch id="setting-fake-stream" v-model="form.fake_stream" />
+            </SettingRow>
+            <SettingRow
+              :label="t('settings.fakeStreamModels')"
+              control-id="setting-fake-stream-models"
+              :description="t('settings.fakeStreamModelsHelp')"
+              effect="service"
+              :changed="changedFields.has('fake_stream_models')"
+              :env="environmentKey('fake_stream_models')"
+            >
+              <input
+                id="setting-fake-stream-models"
+                v-model="form.fake_stream_models"
+                type="text"
+                placeholder="gemini-3.8-flash-fake,gemini-2.5-pro-fake"
+                class="w-full rounded border border-line bg-canvas px-3 py-2 text-sm text-white"
+              />
             </SettingRow>
             <SettingRow
               :label="t('settings.youtubeLinks')"

@@ -43,6 +43,8 @@ type ResponseModes struct {
 	NonstreamKeepalive bool
 	// FakeStream 让流式请求收齐完整结果后再按流式输出
 	FakeStream bool
+	// FakeStreamModels selects client model names before upstream mapping.
+	FakeStreamModels []string
 }
 
 type server struct {

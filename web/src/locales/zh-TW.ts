@@ -13,6 +13,9 @@ export const messages: Record<TranslationKey, string> = {
   'settings.buildNative': '非串流請求優先使用 Build',
   'settings.nonstreamKeepalive': '非串流請求保活',
   'settings.fakeStream': '假串流',
+  'settings.fakeStreamModels': '按模型啟用假流',
+  'settings.fakeStreamModelsHelp':
+    '以逗號分隔用戶端原始模型名稱，並設定模型映射。全域假流關閉時僅這些名稱使用假流；非串流請求維持一般 JSON。',
   'settings.youtubeLinks': 'YouTube 連結辨識',
   'settings.searchModelAliases': '搜尋後綴模型',
   'settings.searchModelAliasesHelp':

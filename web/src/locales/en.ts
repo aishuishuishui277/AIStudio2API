@@ -13,6 +13,9 @@ export const messages: Record<TranslationKey, string> = {
   'settings.buildNative': 'Prefer Build for non-streaming requests',
   'settings.nonstreamKeepalive': 'Keep non-streaming requests alive',
   'settings.fakeStream': 'Fake streaming',
+  'settings.fakeStreamModels': 'Fake streaming models',
+  'settings.fakeStreamModelsHelp':
+    'Comma-separated original client model names; also configure model mapping. When global fake streaming is off, only these names use it. Non-streaming requests still return ordinary JSON.',
   'settings.youtubeLinks': 'Recognize YouTube links',
   'settings.searchModelAliases': 'Search model aliases',
   'settings.searchModelAliasesHelp':

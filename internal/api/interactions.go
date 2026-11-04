@@ -45,8 +45,8 @@ func (s *server) handleInteraction(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	generate.Unary = !request.Stream || s.fakeStream(generate.Model)
 	generate = s.prepareSearch(generate)
-	generate.Unary = !request.Stream || s.responseModes().FakeStream
 	generate.Background = request.Background
 	if !request.Stream && !request.Background {
 		var stopKeepalive func()

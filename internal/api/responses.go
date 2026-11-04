@@ -409,7 +409,7 @@ func (s *server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	generateRequest := prepared.generate
-	generateRequest.Unary = !request.Stream || s.responseModes().FakeStream
+	generateRequest.Unary = !request.Stream || s.fakeStream(generateRequest.Model)
 	events, err := s.service.Generate(r.Context(), generateRequest)
 	if err == nil && request.Stream {
 		events, err = awaitStreamStart(r.Context(), events)

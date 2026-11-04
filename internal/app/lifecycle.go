@@ -279,7 +279,11 @@ func (manager *runtimeManager) Close() error {
 func (manager *runtimeManager) responseModes() api.ResponseModes {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()
-	return api.ResponseModes{NonstreamKeepalive: manager.current.config.NonstreamKeepalive, FakeStream: manager.current.config.FakeStream}
+	return api.ResponseModes{
+		NonstreamKeepalive: manager.current.config.NonstreamKeepalive,
+		FakeStream:         manager.current.config.FakeStream,
+		FakeStreamModels:   config.ModelList(manager.current.config.FakeStreamModels),
+	}
 }
 
 // searchSettings 返回当前生成服务的搜索开关
@@ -623,6 +627,7 @@ func sameDataConfig(value api.RuntimeConfig, active config.Config, overrides dat
 		BuildNativeNonstream:  value.BuildNativeNonstream,
 		NonstreamKeepalive:    value.NonstreamKeepalive,
 		FakeStream:            value.FakeStream,
+		FakeStreamModels:      value.FakeStreamModels,
 		YouTubeLinks:          value.YouTubeLinks,
 		SearchModelAliases:    value.SearchModelAliases,
 		GoogleSearch:          value.GoogleSearch,
@@ -641,6 +646,7 @@ func sameDataConfig(value api.RuntimeConfig, active config.Config, overrides dat
 		saved.WAABackend == active.WAABackend &&
 		saved.BuildNativeNonstream == active.BuildNativeNonstream &&
 		saved.NonstreamKeepalive == active.NonstreamKeepalive && saved.FakeStream == active.FakeStream &&
+		saved.FakeStreamModels == active.FakeStreamModels &&
 		saved.YouTubeLinks == active.YouTubeLinks && saved.FirstEventHedge == active.FirstEventHedge && saved.FirstEventHedgeModels == active.FirstEventHedgeModels &&
 		saved.SearchModelAliases == active.SearchModelAliases && saved.GoogleSearch == active.GoogleSearch &&
 		saved.ContinuationRewrite == active.ContinuationRewrite && saved.ContinuationPrompt == active.ContinuationPrompt &&

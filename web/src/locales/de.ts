@@ -13,6 +13,9 @@ export const messages: Record<TranslationKey, string> = {
   'settings.buildNative': 'Build für Anfragen ohne Streaming bevorzugen',
   'settings.nonstreamKeepalive': 'Anfragen ohne Streaming offen halten',
   'settings.fakeStream': 'Simuliertes Streaming',
+  'settings.fakeStreamModels': 'Modelle für simuliertes Streaming',
+  'settings.fakeStreamModelsHelp':
+    'Ursprüngliche Client-Modellnamen, durch Kommas getrennt; auch die Modellzuordnung konfigurieren. Bei deaktivierter globaler Option gilt simuliertes Streaming nur für diese Namen. Nicht-Streaming-Anfragen bleiben normales JSON.',
   'settings.youtubeLinks': 'YouTube-Links erkennen',
   'settings.searchModelAliases': 'Suchmodell-Aliasse',
   'settings.searchModelAliasesHelp':

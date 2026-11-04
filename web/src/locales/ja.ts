@@ -13,6 +13,9 @@ export const messages: Record<TranslationKey, string> = {
   'settings.buildNative': 'ストリーミング以外のリクエストで Build を優先する',
   'settings.nonstreamKeepalive': '非ストリーミング リクエストのキープアライブ',
   'settings.fakeStream': '疑似ストリーミング',
+  'settings.fakeStreamModels': 'モデル別の疑似ストリーミング',
+  'settings.fakeStreamModelsHelp':
+    '元のクライアントモデル名をカンマ区切りで指定し、モデルマッピングも設定します。全体設定がオフの場合も指定名には適用されます。非ストリーム応答は通常の JSON です。',
   'settings.youtubeLinks': 'YouTube リンクを認識',
   'settings.searchModelAliases': '検索モデルの別名',
   'settings.searchModelAliasesHelp':

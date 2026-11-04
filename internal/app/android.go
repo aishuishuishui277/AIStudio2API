@@ -61,6 +61,9 @@ func RunAndroid(ctx context.Context, directory string, key []byte, ready func(st
 		return err
 	}
 	managedBy = "Android APK"
+	if err := config.EnsureAndroidModelModes(".env"); err != nil {
+		return fmt.Errorf("initialize Android model modes: %w", err)
+	}
 	cfg, err := config.Load(".env")
 	if err != nil {
 		return fmt.Errorf("load Android configuration: %w", err)

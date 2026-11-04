@@ -259,6 +259,7 @@ type RuntimeConfig struct {
 	BuildNativeNonstream      bool                 `json:"build_native_nonstream"`
 	NonstreamKeepalive        bool                 `json:"nonstream_keepalive"`
 	FakeStream                bool                 `json:"fake_stream"`
+	FakeStreamModels          string               `json:"fake_stream_models"`
 	YouTubeLinks              bool                 `json:"youtube_links"`
 	SearchModelAliases        bool                 `json:"search_model_aliases"`
 	GoogleSearch              bool                 `json:"google_search"`

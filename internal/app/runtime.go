@@ -115,6 +115,7 @@ func newRuntime(
 	service.hedgeAuto, service.hedgeAfter, _ = config.ParseFirstEventHedge(cfg.FirstEventHedge)
 	service.hedgeModels = config.ModelList(cfg.FirstEventHedgeModels)
 	service.modelMapping, _ = config.ParseModelMapping(cfg.ModelMapping)
+	service.fakeStreamModels = config.ModelList(cfg.FakeStreamModels)
 	admin := newRuntimeAdmin(lifecycle, pool, store, service, requests, login, workers, headers, cfg)
 	admin.proxies, admin.globalProxy = proxies, globalProxy
 	service.proxies, service.rebindAccounts = proxies, admin.rebindAccounts
@@ -141,6 +142,7 @@ func newRuntime(
 type trackedService struct {
 	buildNativeNonstream bool
 	modelMapping         []config.ModelAlias
+	fakeStreamModels     []string
 	proxies              *aistudio.ProxyPool
 	rebindAccounts       func([]string)
 	lifecycle            context.Context
@@ -568,6 +570,7 @@ func (service *trackedService) Models(context.Context) ([]aistudio.Model, error)
 
 // withAliases 把 MODEL_MAPPING 中目标在目录内的别名加入公开目录，字段取自目标模型，与目录 ID 同名的别名替换该条目，同名别名以先写的为准
 func (service *trackedService) withAliases(models []aistudio.Model) []aistudio.Model {
+	models = slices.Clone(models)
 	index := make(map[string]int, len(models))
 	for i, model := range models {
 		index[model.ID] = i
@@ -581,6 +584,15 @@ func (service *trackedService) withAliases(models []aistudio.Model) []aistudio.M
 		done[alias.Alias] = true
 		target, _, _ := aistudio.ApplyModelSuffix(alias.Model, aistudio.GenerationConfig{})
 		model, ok := api.LookupPublicModel(targets, target)
+		if slices.Contains(service.fakeStreamModels, alias.Alias) {
+			// Fake variants must name a real catalog ID, not a capability alias
+			// for another model (for example an older Pro name under pro-latest).
+			position := slices.IndexFunc(targets, func(item aistudio.Model) bool { return item.ID == target })
+			ok = position >= 0
+			if ok {
+				model = targets[position]
+			}
+		}
 		if !ok {
 			continue
 		}

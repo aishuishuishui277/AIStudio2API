@@ -295,6 +295,7 @@ export interface ServiceConfig {
   build_native_nonstream: boolean
   nonstream_keepalive: boolean
   fake_stream: boolean
+  fake_stream_models: string
   youtube_links: boolean
   search_model_aliases: boolean
   google_search: boolean

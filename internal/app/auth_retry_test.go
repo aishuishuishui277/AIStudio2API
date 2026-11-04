@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"os"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -14,7 +14,11 @@ func TestAuthRefreshWithoutExtension(t *testing.T) {
 	directory := t.TempDir()
 	storage := filepath.Join(directory, "storage-state.json")
 	state := `{"cookies":[{"name":"SAPISID","value":"old","domain":".google.com","path":"/","secure":true,"sameSite":"Lax"}],"origins":[]}`
-	if err := os.WriteFile(storage, []byte(state), 0o600); err != nil {
+	var fixture aistudio.StorageState
+	if err := json.Unmarshal([]byte(state), &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if err := aistudio.WriteStorageState(storage, fixture); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := aistudio.LoadStorageState(storage)

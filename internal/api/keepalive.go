@@ -4,8 +4,12 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/Mag1cFall/AIStudio2API/internal/aistudio"
 )
 
 // keepaliveWriter 在非流式响应写出前每隔心跳间隔写出一个换行，首个换行以 200 与 JSON 类型提交响应头，状态码只记入访问日志
@@ -24,6 +28,28 @@ func (s *server) responseModes() ResponseModes {
 		return ResponseModes{}
 	}
 	return s.config.ResponseModes()
+}
+
+// fakeStream selects a request-local mode from the original client name, never
+// from MODEL_MAPPING's upstream target. Search/thinking variants inherit it.
+func (s *server) fakeStream(model string) bool {
+	modes := s.responseModes()
+	if modes.FakeStream {
+		return true
+	}
+	name := strings.TrimPrefix(strings.TrimSpace(model), "models/")
+	if slices.Contains(modes.FakeStreamModels, name) {
+		return true
+	}
+	name, _, _ = aistudio.ApplyModelSuffix(name, aistudio.GenerationConfig{})
+	if slices.Contains(modes.FakeStreamModels, name) {
+		return true
+	}
+	if aliases, _ := s.searchSettings(); aliases {
+		name, _ = aistudio.ResolveSearchModelAlias(name)
+		return slices.Contains(modes.FakeStreamModels, name)
+	}
+	return false
 }
 
 // nonstreamKeepalive 在开启非流式保活时返回带保活的 ResponseWriter，以及在处理函数返回前调用的停止函数

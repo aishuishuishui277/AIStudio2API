@@ -11,6 +11,9 @@ export const messages = {
   'settings.buildNative': '非流式请求优先使用 Build',
   'settings.nonstreamKeepalive': '非流式请求保活',
   'settings.fakeStream': '假流式',
+  'settings.fakeStreamModels': '按模型启用假流',
+  'settings.fakeStreamModelsHelp':
+    '逗号分隔客户端原始模型名，需同时配置模型映射。全局假流关闭时仅这些名称使用假流；非流式请求保持普通 JSON。',
   'settings.youtubeLinks': 'YouTube 链接识别',
   'settings.searchModelAliases': '搜索后缀模型',
   'settings.searchModelAliasesHelp':

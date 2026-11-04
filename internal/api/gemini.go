@@ -1228,8 +1228,8 @@ func (s *server) handleGeminiCountTokens(w http.ResponseWriter, r *http.Request,
 
 // handleGeminiGenerate 为每个候选启动一次生成，任一候选失败时整个请求按首个错误失败，audio 非空时音频按 responseFormat.audio 转换
 func (s *server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, request aistudio.GenerateRequest, stream bool, count int, audio *outputAudioFormat) {
+	request.Unary = !stream || s.fakeStream(request.Model)
 	request = s.prepareSearch(request)
-	request.Unary = !stream || s.responseModes().FakeStream
 	if !stream {
 		var stopKeepalive func()
 		w, stopKeepalive = s.nonstreamKeepalive(w, r)

@@ -13,6 +13,9 @@ export const messages: Record<TranslationKey, string> = {
   'settings.buildNative': '스트리밍이 아닌 요청에 Build 우선 사용',
   'settings.nonstreamKeepalive': '비스트리밍 요청 연결 유지',
   'settings.fakeStream': '가짜 스트리밍',
+  'settings.fakeStreamModels': '모델별 가상 스트리밍',
+  'settings.fakeStreamModelsHelp':
+    '클라이언트의 원래 모델 이름을 쉼표로 구분하고 모델 매핑도 설정하세요. 전역 설정이 꺼져도 이 이름에 적용됩니다. 비스트리밍 요청은 일반 JSON을 반환합니다.',
   'settings.youtubeLinks': 'YouTube 링크 인식',
   'settings.searchModelAliases': '검색 모델 별칭',
   'settings.searchModelAliasesHelp':

@@ -256,8 +256,8 @@ func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	generateRequest.Unary = !request.Stream || s.fakeStream(request.Model)
 	generateRequest = s.prepareSearch(generateRequest)
-	generateRequest.Unary = !request.Stream || s.responseModes().FakeStream
 	if !request.Stream {
 		var stopKeepalive func()
 		w, stopKeepalive = s.nonstreamKeepalive(w, r)

@@ -134,8 +134,8 @@ func (s *server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	generateRequest.Unary = !request.Stream || s.fakeStream(request.Model)
 	generateRequest = s.prepareSearch(generateRequest)
-	generateRequest.Unary = !request.Stream || s.responseModes().FakeStream
 	if !request.Stream {
 		var stopKeepalive func()
 		w, stopKeepalive = s.nonstreamKeepalive(w, r)

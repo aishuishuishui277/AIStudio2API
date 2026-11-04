@@ -57,6 +57,7 @@ var configKeys = [...]string{
 	"BUILD_NATIVE_NONSTREAM",
 	"NONSTREAM_KEEPALIVE",
 	"FAKE_STREAM",
+	"FAKE_STREAM_MODELS",
 	"YOUTUBE_LINKS",
 	"SEARCH_MODEL_ALIASES",
 	"GOOGLE_SEARCH",
@@ -108,6 +109,7 @@ type Config struct {
 	BuildNativeNonstream   bool
 	NonstreamKeepalive     bool
 	FakeStream             bool
+	FakeStreamModels       string
 	YouTubeLinks           bool
 	SearchModelAliases     bool
 	GoogleSearch           bool
@@ -197,6 +199,7 @@ var configSetters = map[string]func(*Config, string) error{
 	"BUILD_NATIVE_NONSTREAM":   boolSetter("BUILD_NATIVE_NONSTREAM", func(c *Config) *bool { return &c.BuildNativeNonstream }),
 	"NONSTREAM_KEEPALIVE":      boolSetter("NONSTREAM_KEEPALIVE", func(c *Config) *bool { return &c.NonstreamKeepalive }),
 	"FAKE_STREAM":              boolSetter("FAKE_STREAM", func(c *Config) *bool { return &c.FakeStream }),
+	"FAKE_STREAM_MODELS":       textSetter(func(c *Config) *string { return &c.FakeStreamModels }, strings.TrimSpace),
 	"SEARCH_MODEL_ALIASES":     boolSetter("SEARCH_MODEL_ALIASES", func(c *Config) *bool { return &c.SearchModelAliases }),
 	"GOOGLE_SEARCH":            boolSetter("GOOGLE_SEARCH", func(c *Config) *bool { return &c.GoogleSearch }),
 	"YOUTUBE_LINKS":            boolSetter("YOUTUBE_LINKS", func(c *Config) *bool { return &c.YouTubeLinks }),
@@ -504,6 +507,7 @@ func (c Config) envValues() map[string]string {
 		"BUILD_NATIVE_NONSTREAM":   strconv.FormatBool(c.BuildNativeNonstream),
 		"NONSTREAM_KEEPALIVE":      strconv.FormatBool(c.NonstreamKeepalive),
 		"FAKE_STREAM":              strconv.FormatBool(c.FakeStream),
+		"FAKE_STREAM_MODELS":       c.FakeStreamModels,
 		"YOUTUBE_LINKS":            strconv.FormatBool(c.YouTubeLinks),
 		"SEARCH_MODEL_ALIASES":     strconv.FormatBool(c.SearchModelAliases),
 		"GOOGLE_SEARCH":            strconv.FormatBool(c.GoogleSearch),
