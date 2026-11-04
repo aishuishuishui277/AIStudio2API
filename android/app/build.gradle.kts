@@ -7,8 +7,8 @@ android {
         applicationId = "io.github.aistudio2api.android"
         minSdk = 35
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-android-prototype"
+        versionCode = 2
+        versionName = "0.2.0-android-dual-stream"
         ndk { abiFilters += "arm64-v8a" }
     }
     compileOptions {

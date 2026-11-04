@@ -2,7 +2,6 @@ package io.github.aistudio2api.android
 
 import android.app.Activity
 import android.os.Bundle
-import android.view.WindowManager
 import android.webkit.*
 import android.widget.FrameLayout
 
@@ -11,7 +10,6 @@ class WebActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         web = WebView(this)
         val frame = FrameLayout(this).apply { addView(web) }
         setContentView(frame)

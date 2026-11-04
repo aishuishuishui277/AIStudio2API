@@ -20,7 +20,7 @@ test -f internal/webui/dist/index.html
 out=android/app/src/main/jniLibs/arm64-v8a
 mkdir -p "$out"
 go build -mod=readonly -trimpath -buildmode=c-shared \
-    -ldflags='-s -w -X github.com/Mag1cFall/AIStudio2API/internal/app.version=v0.1.0-android-prototype -extldflags=-Wl,-z,max-page-size=16384' \
+    -ldflags='-s -w -X github.com/Mag1cFall/AIStudio2API/internal/app.version=v0.2.0-android-dual-stream -extldflags=-Wl,-z,max-page-size=16384' \
     -o "$out/libaistudio2api.so" ./cmd/androidcore
 cp "$toolchain/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" "$out/"
 "$toolchain/bin/llvm-readelf" -W -h -l -d "$out/libaistudio2api.so" > "$out/elf-report.txt"
