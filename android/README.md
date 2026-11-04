@@ -2,7 +2,7 @@
 
 目标为 Android 15 ARM64。复用固定 Fork 基线的 Go 服务、Playground、OpenAI API、模型目录、SSE 和 Web 管理页面；通过 `c-shared` / JNI 嵌入 Kotlin 前台服务。运行时不需要电脑、Termux、Docker 或 VPS。
 
-本目录仍处于原型验证阶段。以 `ANDROID_TEST_REPORT.md` 的实际记录为准；编译成功不等于 Google 认证或模型验收通过。
+当前为 `0.2.0-android-dual-stream` debug 验证版（versionCode 2）。本设备已用现有迁移账号完成真实生成、双模式和隔离 SillyTavern 角色对话测试；本轮结果见仓库根目录 `ANDROID_DUAL_MODEL_TEST_REPORT.md`。早期 `ANDROID_TEST_REPORT.md` 保留为首个原型的历史记录。
 
 ## 安装与使用
 
@@ -23,7 +23,7 @@
 - 点 Android 界面的“导入 Windows 账号状态 JSON”，通过系统文件选择器选中 JSON。文件只在设备内解析，复用现有 Cookie 导入接口；不会发往项目维护者或构建服务器。
 - 导入接口只取可携带的 Google Cookie / origins，不导入 Windows Chrome OAuth refresh token、wrapped binding key、Chrome 路径。这些数据不能被假定能在 Android 续签。
 - 文件解析和保存成功不等于会话有效。程序会继续使用原有上游校验、账号状态和错误处理；认证过期后重新导出/导入。无需把 Google 密码交给程序。
-- 原型不会复制 Windows 的完整账户指纹文件；默认使用现有引擎生成的持久指纹。跨设备 Cookie 是否被 Google 接受仍需真实验证。
+- 不复制 Windows 的完整账户指纹文件；默认使用现有引擎生成的持久指纹。本 vivo 已有迁移状态在升级后真实生成成功；其他账号或设备仍需各自验证。
 - 导入副本在导入前由用户选择的存储位置保护；导入成功后可自行移除该副本。程序落盘的 storage-state 使用 AES-256-GCM 加密，数据密钥经 Android Keystore 包装；运行内存中仍需解密后使用。
 - 不把账号文件、Cookie、`.env` 或完整请求正文提交到 Git。测试日志使用合成数据。
 
@@ -42,6 +42,33 @@ Android 固定 `LISTEN_ADDR=127.0.0.1:2048`、`PREVIEW_LISTEN_ADDR=127.0.0.1:204
 端口被占用时启动失败并显示错误，不静默改 API 端口。管理页现有预览服务保留自己的端口回退机制。若开启管理认证，先在内嵌管理页登录，原生导入和生成控制会复用该管理会话。
 
 使用 `specialUse` 前台服务声明“用户启动的本地 API 服务”，持有常驻通知；无开机自启、WakeLock、无限拉起。国产系统电池策略、锁屏或进程回收仍可能停止连接。APK 关闭原有桌面在线更新，以固定基线为准。
+
+## 按模型切换真流 / 假流
+
+在 SillyTavern 的同一个 OpenAI 兼容连接中选择模型，无需切换全局开关：
+
+| 客户端模型名 | stream=true | 实际上游目标 |
+| --- | --- | --- |
+| gemini-3.8-flash | 原有真流 | gemini-3.8-flash |
+| gemini-3.8-flash-fake | 原有 FAKE_STREAM 完整结果后转 SSE | gemini-3.8-flash |
+
+两者 `stream=false` 都返回普通 JSON。并发请求各自决定 Unary，不改全局状态。全局 `FAKE_STREAM=true` 仍可让所有模型使用假流；`false` 时仅 `FAKE_STREAM_MODELS` 列出的客户端原始名称启用假流。搜索/思考后缀沿用对应别名的模式。
+
+配置使用现有逗号分隔格式，不把换行当成条目分隔符。例如：
+
+```dotenv
+FAKE_STREAM=false
+MODEL_MAPPING=gemini-3.8-flash-fake:gemini-3.8-flash,gemini-2.5-pro-fake:gemini-2.5-pro,gemini-3-pro-preview-fake:gemini-3-pro-preview,gemini-3.1-flash-lite-fake:gemini-3.1-flash-lite
+FAKE_STREAM_MODELS=gemini-3.8-flash-fake,gemini-2.5-pro-fake,gemini-3-pro-preview-fake,gemini-3.1-flash-lite-fake
+```
+
+Android 首次升级会补充主力文本模型的映射和假流名单，包括 2.5 Pro、3 Pro、3.1 Pro/Flash、3.8 Flash、latest、Gemma 等；只为实时真实目录存在的目标展示 `-fake`，不会把旧型号偷偷换成 latest 来宣称可用。当前账号没有普通 2.5 Pro / 3 Pro Preview 的独立目录项，因此不展示其假流别名。完整初始名单见 `internal/config/android_models.go`；可按账号目录自行扩展任意型号。
+
+迁移仅修改 `MODEL_MAPPING` / `FAKE_STREAM_MODELS`，保留已有映射冲突和其他配置，在私有目录保存 `.env.before-model-modes-v1`；`.env.android-model-modes-v1` 标记防止反复补回。已明确配置 `FAKE_STREAM_MODELS`（包括空值）时不覆盖。管理设置页可编辑假流名单；保存后停止并重新启动生成服务。若要移除别名，请同时移除对应映射和名单项。
+
+公开目录在 `/v1/models` 投影别名并继承目标能力；Web 管理的实时模型目录保留真实型号，虚拟别名不写入 Google 目录缓存。假流复用现有 Unary 和 SSE、心跳、取消及错误处理，可能输出多个紧邻的内容 chunk，不承诺逐字打字动画。
+
+普通管理 WebView 已移除 `FLAG_SECURE`，允许截图和录屏；Keystore、AES-GCM、私有账号文件、Cookie 脱敏和 API Key 保护保持原样。
 
 ## 构建
 
@@ -79,5 +106,6 @@ release 只在真实设备、账号、模型与 SillyTavern 验收后构建；�
 
 - 不卸载 Windows 正式版，也不改其账号目录；Android 的安装与私有数据独立。
 - 调试版保留上一份 APK。相同签名且版本号允许时可用 `adb install -r` 覆盖回到已保留的版本；降版本需按 Android 实际安装结果处理。
+- 本轮升级前已保留 versionCode 1 的成功 APK。debug 包降级可用 `adb install -r -d <旧APK>`，先停止服务，不卸载或清数据。需要恢复原配置时，在停服后用 debug `run-as` 将私有 `.env.before-model-modes-v1` 复制回 `.env`；账号文件和 Keystore 不动。恢复前先保留自己的后续配置修改。
 - 卸载或清除 Android 应用数据会删除私有状态及 Keystore 密钥，之后需要重新导入。Android 加密 storage-state 不应直接复制回 Windows。
 - Git 回退使用独立分支的阶段提交，或检出固定基线到另一个目录；不重置 main，不强制推送。
