@@ -1,78 +1,65 @@
-# Android ARM64 原生移植可行性审查
+# Android ARM64 可行性审查
 
-审查日期：2026-11-04（Asia/Shanghai）。目标：vivo V2444A / Android 15 / ARM64。
+日期：2026-11-04。目标：vivo V2444A / Android 15 / ARM64。实际验收范围见 ANDROID_TEST_REPORT.md。
 
-## 基线与范围
+## 基线与结论
 
-- 已通过 `gh api repos/aishuishuishui277/AIStudio2API` 确认现有 Fork；`fork=true`，parent/source 均为 `Mag1cFall/AIStudio2API`，当前用户有 push 权限。
-- origin：`https://github.com/aishuishuishui277/AIStudio2API.git`；未创建 Fork、未配置上游写入 remote。
-- 克隆前当前目录不是 Git 仓库；克隆后 main 工作树干净。
-- 固定基线：`a7afc31252dbb2543d79ac664eabf569148303bc`。不拉取上游新版本。
-- 独立分支：`feature/android-standalone`（创建前远端不存在）。main 不修改。
-- 本报告的“已有实现”表示源码证据，不表示 Android 实机 PASS。
+已通过 gh / GitHub API 验证现有 aishuishuishui277/AIStudio2API 是 Fork，parent/source 均为 Mag1cFall/AIStudio2API，用户有 push 权限。初始目录不是 Git 仓库，确认后才克隆；唯一 origin 是用户 Fork，没有重新 Fork 或向上游写入。
 
-## 初步结论
+固定基线：a7afc31252dbb2543d79ac664eabf569148303bc。干净工作树创建 feature/android-standalone，main 保持原提交，不主动更新上游。
 
-**有条件可行，但指定的“纯 Go WAA”路线在当前基线不存在。** 当前实现需要 Android NDK 和定制 SpiderMonkey，不能用 `CGO_ENABLED=0` 构建完整服务，也不能把 Linux ARM64 包当 Android 包。
+**原生编译、APK 装载、本地服务和 WebUI 已实机验证可行；Google 账号迁移和实际模型能力尚待验证。** 采用 Go c-shared / 小型 JNI / Kotlin 前台服务，复用原有 API、模型目录、SSE、服务装配和资源，不需要电脑常驻、Termux、Docker 或 VPS。
 
-`internal/config/config.go` 仅接受 `camoufox` / `spidermonkey`。旧全量 .env 的兼容迁移可把 `go` 改为 `spidermonkey`；普通配置中的 `go` 会被记录为无效并回退默认 Camoufox。`internal/aistudio/runtime_go.go` 文件名保留了历史名字，实际创建的是 `NewSpiderMonkeyWorker`。
+**当前基线没有纯 Go WAA。** config 仅接受 camoufox / spidermonkey；普通 WAA_BACKEND=go 无效，仅旧全量 .env 迁移会改为 spidermonkey。runtime_go.go 的历史名字不能证明纯 Go 实现；历史 9b694a6 已替换旧 JS 引擎。原型保留当前 WAA，使用 NDK 构建定制 SpiderMonkey，没有替换算法。
 
-`internal/waa/runtime.go` 直接使用 `internal/waa/mozjs`；后者 `import "C"`，链接定制 `libjs_static` 和 `libjsrust`。仓库历史 `9b694a6` 已替换旧 Go JS 引擎。不能靠改后端字符串恢复旧实现。
+## 逐项核实
 
-Mozilla 有 Android aarch64 的 SpiderMonkey 构建路径，但这只证明存在官方构建路线；项目定制版本的编译、链接、proof 和设备运行均须另外验证。当前先验证这项闸门，保留当前 WAA，不恢复历史版本、不替换整个实现。
+| 项目 | 状态 | 修改、证据与验证方法 |
+| --- | --- | --- |
+| Go 入口 / 生命周期 | 已适配，实机通过 | 独立 cmd/androidcore，复用 internal/app，避免 CLI os.Exit；JNI Start/Stop/Status；HTTP200→关闭监听→重启200，UI同步 |
+| Android ARM64 / CGO | 已支持 | Go1.27.3 + NDK r30 / bionic 完整构建装载；强制 CGO=1，CGO=0 按预期失败，不能只凭 Go 交叉目标判断 |
+| 定制 SpiderMonkey | 构建/基础 JS 通过；完整 proof 待验 | 原资产没有 Android；固定 e297ff009d3b9afee0e223c02ae3271ef24d51b6，仅 NDK r29→r30 补丁和 Mozilla JS Cargo workspace 过滤；定制符号、双context、Intl、Promise jobs、GC/关闭实机通过 |
+| 动态库 / 16KB | 静态检查通过 | 链接 libjs_static.a / libjsrust.a，携带同一 NDK libc++_shared.so；两个 .so 为 AArch64、LOAD≥16KB、APK zipalign通过；vivo实际4096页，16KB设备未测 |
+| 系统调用 / 可执行文件 | 关键路径已隔离 | 不在可写私有目录 exec 服务，使用 APK 原生库；Android拒绝 Camoufox 查找/登录，不下载桌面浏览器。设备装载和启停通过，所有媒体/QUIC分支未穷尽 |
+| SQLite | 底层实机通过 | go-sqlite3经NDK编译；WAL、插入、关闭重开读取通过，真实账户账本待验 |
+| 音频 / tokenizer | 编译通过；计数实机通过 | 完整API目标编译无额外缺失库；gemma3嵌入模型长文本计数通过；真实音频请求未测 |
+| 浏览器指纹 | 本地生成通过 | 原BrowserForge生成Firefox152形状及时区；Google是否接受跨设备状态未测 |
+| TLS / HTTP2 | 设备公网握手通过 | 保留原fhttp/utls客户端，经手机本地代理Google返回302/HTTP2，无Cookie；不是模型200 |
+| HTTP3 / QUIC | 编译通过，运行待验 | uquic随核心编译；未验证UDP、HTTP3、网络切换 |
+| 当前设备网络 | 需要本地代理配置 | VPN直连路径fake-IP连接拒绝；手机本地127.0.0.1:7890实测成功，仅配置本应用PROXY，不改VPN；不依赖电脑提供代理 |
+| 路径 / 文件 / 时区 | 已适配 | 独立core进程，应用私有files/core，XDG/TMPDIR私有化，嵌入tzdata；已有.env不覆盖，无共享存储权限 |
+| Windows 注册表 / Chrome | 已隔离 | 原平台文件隔离注册表实现；Android不调用Windows路径、不提取密钥；Windows安装与账户目录未改 |
+| Cookie / 状态格式 | 导入已实现，迁移待验 | 复用StorageState cookies/origins及原导入API；不迁移Chrome OAuth/binding密钥/路径；解析成功不代表认证有效 |
+| 凭据保护 | 合成测试通过，真实状态待验 | 私有目录，AES256-GCM，Keystore包装数据密钥，禁备份；随机nonce/往返/篡改和错误密钥拒绝实机通过；APK Keystore初始化和升级复用通过；关闭正文日志，不记录Cookie值 |
+| 认证过期 | 原逻辑保留，真实验收待做 | 原CheckSession、Cookie过滤、AccountAuthRequired；需要真实过期和重新导入恢复测试 |
+| Windows 账号导入 | 方案A已实现，未真实验证 | APK系统文档选择器导入本地JSON，原API校验、加密保存；用户自行选文件，不上传凭据 |
+| Android 重新登录 | 方案B未实现 | 当前明确拒绝桌面登录。WebView/Custom Tabs不能直接等同于可取得Playground会话；GeckoView可研究，Google登录/状态转移/完整WAA均未验证，不声称成功率高 |
+| Web 管理资源 | 实机通过 | 原锁文件npm ci/build与embed dist；WebView实际渲染账号/模型入口。Android构建隐藏桌面添加菜单、提示原生导入，普通Windows菜单保留 |
+| Chat / SSE / 模型目录 | 原实现保留，业务待验 | 设备API离线回归26顶层/含子测试34通过；真实目录、生成、SSE必须账户验收，不能用mock替代 |
+| Android15前台服务 | 已实现，部分通过 | specialUse、常驻通知及停止动作、START_NOT_STICKY；无WakeLock/无限重启；实机确认类型/通知/界面启停。通知点击、锁屏、回收待测，不承诺强杀存活 |
+| 网络与文件权限 | 已配置，启动通过 | INTERNET/前台服务/通知；SAF文件选择；仅loopback2048/2049。同设备其他App可访问，应设置API key |
+| 更新 / Windows兼容 | 已隔离，完整Windows回归未跑 | Android managed关闭桌面自更新；其他平台状态编码保持原路径；main与用户提交未覆盖 |
 
-## 逐项审查
+## 集成方式选择
 
-| 项目 | 当前状态 | 证据 / 必要修改 | 验证方法 |
-| --- | --- | --- | --- |
-| Go 服务入口 | 需要修改 | `cmd/aistudio2api/main.go` 调用 `os.Exit(app.Run(...))`；不能直接嵌入 Android JVM | 新增独立 Android 入口，共用 `internal/app` 的装配和 HTTP handler；反复 Start/Stop |
-| Android ARM64 编译 | 主要阻碍，验证中 | Go 支持目标不代表依赖可用；mozjs 为强制 CGO，现有链接规则是桌面规则 | `GOOS=android GOARCH=arm64 CGO_ENABLED=1`，NDK bionic 编译、ELF 检查及设备加载 |
-| WAA_BACKEND=go | 当前基线不支持 | config 校验和历史替换均可复查 | 配置测试验证，不能用 alias 宣称恢复纯 Go |
-| SpiderMonkey WAA | 主要阻碍，验证中 | release `v152.0.4-aistudio2api.1` 的 6 个资产仅 Windows/Linux/macOS，没有 Android；Linux ARM64 是 musl | 固定定制源码 `e297ff009d3b9afee0e223c02ae3271ef24d51b6`，NDK 构建；验证两个定制符号、JS API、proof |
-| SQLite | 需要 NDK 编译 | `internal/sqlitedb` 用 `mattn/go-sqlite3`，其非 CGO stub 不能提供数据库服务 | Android 私有目录建库、WAL、停止重启、账本和对话库读写 |
-| 音频原生代码 | 需要验证 | API 静态导入 gopus、oov/audio/resampler；不能因仅使用文本就忽略编译依赖 | 列出目标 CGO 文件；NDK 编译，保留原协议；文本/SSE 回归 |
-| tokenizer | 已有嵌入实现，待目标验证 | `internal/aistudio/tokenizer.go` 嵌入 gemma3.model.zst，使用 go-sentencepiece | 目标编译和本地长文本计数 |
-| 浏览器指纹 | 已有无浏览器路径，待设备验证 | `runtime_go.go` / `camoufoxnative.AccountFingerprint` 生成/保留 Firefox 宿主形状 | 导入指纹、VM 初始化、真实 Playground 请求；不能声称 Google 一定接受 |
-| TLS / HTTP2 | 已有实现，待目标验证 | `transport_browser.go` 用 Mag1cFall/fhttp + utls；有自定义 HTTP2 pool/请求头顺序 | 逐依赖编译；设备信任库、TLS 握手、真实 HTTP2/SSE |
-| HTTP3 / QUIC | 已有实现，待目标验证 | Mag1cFall/uquic；Android 虽匹配部分 linux tags，bionic 与 socket 行为仍需检查 | NDK/Go 目标构建；UDP 不可用时原有 HTTP2 路径和网络切换 |
-| 网络可达性 | 外部必要条件，未验证 | 手机上的网络须能连接 Google；APK 不提供远端反代 | 设备实际网络测试，区分 DNS/TLS/认证/WAA/业务错误 |
-| 路径与文件 | 需要修改 | app 大量使用相对 `.env`、auth/runtime；临时目录和时区数据不能依赖桌面系统 | 单独 core 进程固定 filesDir 下工作目录，TMPDIR 指向 cache，嵌入 tzdata；检查无共享存储权限 |
-| Windows 注册表 / Chrome | 已有平台隔离，Android 需关闭入口 | chromeauth 的 Windows 实现分文件，非 Windows 返回不支持；ncrypt 设备绑定密钥不能直接移植 | Android 明确拒绝本机 Chrome 提取，不调用 Windows 路径 |
-| 账号状态格式 | 已有可复用格式 | `StorageState{cookies,origins}`，外加 `aistudio2api` OAuth/source 扩展；账户目录另有配置、指纹、运行态 | 本地 JSON 导入测试 + 设备真实账号校验；格式解析不等于登录有效 |
-| Cookie 过期 | 已有检测 | Cookie 到期过滤、Signer、CheckSession、AccountAuthRequired 与上游错误处理 | 人工过期状态 / 401；真实重新导入后恢复 |
-| OAuth 续签 | 部分不可迁移 | Windows Chrome 的 wrapped binding key 依赖 Windows 密钥；私有 Chrome 路径在手机无效 | 移动导入仅取可携带 cookies/origins；不承诺桌面 OAuth 续签在 Android 有效 |
-| Android 重新登录 | 尚未实现 | 现有登录仍通过 lazyLoginDriver 启动 Camoufox；Android WebView 不等价于受支持 Google 登录 | 本原型优先方案 A；方案 B 不能通过填密码/伪造 OAuth 授权解决 |
-| Web 管理资源 | 已有嵌入机制，需要先构建 | `web/package-lock.json` 固定前端依赖；`internal/webui/embed.go` 嵌入 dist | npm ci/build，APK 断开电脑后打开页面；不能用占位页代替实际产物 |
-| Chat Completions / SSE | 已有协议实现，待目标验收 | 原 API 与 upstream client 直接复用，不重写 | 单元回归 + 设备 HTTP 200、内容、SSE 终态、多轮/长上下文 |
-| Android 15 前台服务 | 需要新增 | 用户启动的长期本地 API 不适合受六小时额度限制的 dataSync；考虑 specialUse 并声明用途 | API35 manifest、常驻通知、通知 Stop、启动限制、锁屏/系统回收；不承诺强杀存活 |
-| 网络和文件权限 | 需要新增 | INTERNET；通知运行时权限；FOREGROUND_SERVICE / SPECIAL_USE；loopback 明文策略 | 不申请共享存储/账号/短信权限；仅 127.0.0.1 监听；同设备其他 App 仍可访问 loopback，支持 API key |
-| 16KB / JNI | 需要验证 | Go + C++/Rust 共享库均需支持 Android 15 可能使用的 16KB 页；不可只 zipalign | readelf LOAD 对齐、APK zipalign、依赖库齐全，目标设备页大小与加载测试 |
-| 凭据保护 | 需要新增 | upstream storage state 为私有明文 0600；Android 应禁备份，优先 Keystore 包装密钥保护落盘状态 | 合成 Cookie 测试不落明文、错误日志无值；设备 Keystore 和导入往返 |
-| 更新/回滚 | 需要关闭桌面自更新 | `selfUpdater` 有 managed 模式；Android 由 APK 管理，不跟上游发行版 | managed 标识，无桌面包下载；保留旧 APK/数据，清数据/卸载会丢失 Keystore 密钥 |
+gomobile/AAR是成熟选项，但不能免除本项目C++/Rust和生命周期问题。c-shared/JNI能以较小改动直接复用app装配，控制ARM64/16KB链接和错误返回。Kotlin前台服务在独立:core进程；不用Termux或桌面可执行文件启动方案。
 
-## 集成方式比较
+## 主要剩余阻碍与验证
 
-| 方式 | 结论 |
-| --- | --- |
-| gomobile bind / AAR | 官方成熟路径；仍要解决原生 C++/Rust 和生命周期，不能免除 WAA 构建 |
-| Go c-shared + 小型 JNI | 可直接复用 app 包，桥接 Start/Stop/状态；依赖更少，便于固定 ARM64 与 linker 参数。先验证此路径 |
-| 把可执行文件写入 filesDir 后 exec | 不选；Android 对可写应用目录执行文件有限制，错误地套用 Linux 启动逻辑风险高 |
-| Termux / VPS / 桌面常驻反代 | 不采用，违背独立运行目标 |
+1. 用户在手机本地导入其Windows状态，验证会话、加密落盘/重启、Google完整WAA proof、认证过期与恢复。按要求在需要真实凭据处停止，不索取Cookie或密码。
+2. 实际ListModels必须包含gemini-3.8-flash，再验证HTTP200、文本、SSE、多轮/长上下文；不硬编码模型凑验收。
+3. SillyTavern模型选择、角色卡、10轮RP、30分钟、锁屏/网络切换、内存峰值与异常退出尚待实测。
+4. Android原生登录需要独立实验，不能只删除报错。普通WebView的Google OAuth受限制；Custom Tabs不向嵌入应用开放Cookie。GeckoView扩展/本地消息仅提供候选集成方式，不能证明Google接受。
 
-## 实机验收闸门
+构建/配置/导入/回滚见 android/README.md；定制依赖准备见 android/native/README.md；仅交付debug原型，release等待实际验收。
 
-当前 `adb devices -l` 没有设备；未读取或请求用户 Google 凭据，也未读取现有 Windows 运行目录中的账号状态。
+## 官方资料（不代替项目实测）
 
-以下全部为 **Not run**：APK 安装/启动、本地 API 与 WebUI、真实模型目录、gemini-3.8-flash HTTP 200/生成/SSE/多轮、SillyTavern 获取模型/角色卡/10轮 RP/长上下文、30分钟稳定性、锁屏、网络切换、内存、异常退出和账号迁移。
-
-模型目录必须来自账户实际 ListModels，不能为了验收硬编码模型或把 mock HTTP 200 记为模型可用。完成构建只能交付 debug APK；release 须等待真实验收。
-
-## 官方资料（能力与限制，不是项目实测结果）
-
-- [Mozilla：SpiderMonkey Android aarch64 构建](https://firefox-source-docs.mozilla.org/js/build.html#spidermonkey-on-android-aarch64)
-- [Go Mobile / AAR](https://go.dev/wiki/Mobile)
-- [Android 前台服务类型](https://developer.android.com/develop/background-work/services/fgs/service-types)
-- [Android 15 dataSync 限时](https://developer.android.com/about/versions/15/behavior-changes-15#datasync-timeout)
-- [Android 16KB 页](https://developer.android.com/guide/practices/page-sizes)
-- [本基线源码](https://github.com/aishuishuishui277/AIStudio2API/tree/a7afc31252dbb2543d79ac664eabf569148303bc)
-- [定制 SpiderMonkey 版本与资产](https://github.com/Mag1cFall/firefox/releases/tag/v152.0.4-aistudio2api.1)
+- [Mozilla Android aarch64 SpiderMonkey](https://firefox-source-docs.mozilla.org/js/build.html#spidermonkey-on-android-aarch64)
+- [Go Mobile](https://go.dev/wiki/Mobile)
+- [前台服务类型](https://developer.android.com/develop/background-work/services/fgs/service-types)
+- [Android15 dataSync限时](https://developer.android.com/about/versions/15/behavior-changes-15#datasync-timeout)
+- [Android16KB页](https://developer.android.com/guide/practices/page-sizes)
+- [Google WebView OAuth限制](https://developers.googleblog.com/en/upcoming-security-changes-to-googles-oauth-20-authorization-endpoint-in-embedded-webviews/)
+- [Custom Tabs边界](https://chromium.googlesource.com/chromium/src/+/main/docs/security/custom-tabs-faq.md)
+- [GeckoView扩展](https://firefox-source-docs.mozilla.org/mobile/android/geckoview/consumer/web-extensions.html)

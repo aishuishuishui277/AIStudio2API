@@ -15,6 +15,8 @@
 
 手机网络本身必须能连接 Google。电脑仅用于构建、安装和可选诊断，不能充当 APK 的运行依赖。
 
+本次 vivo 实测：当前 VPN 的直连路径对 Go 客户端返回 fake-IP 连接拒绝；管理设置配置 `PROXY=http://127.0.0.1:7890` 后，APK 自身“Google 网络诊断”返回 HTTP 302 / HTTP/2.0。这是手机本地代理，不是电脑代理；当前实例已保存此配置，新装默认留空，按设备实际端口配置。诊断不使用账号 Cookie，302 只证明公网连接，不能证明登录或模型可用。
+
 ## Windows 账号导入（方案 A）
 
 - 从 Windows AIStudio2API 的 `auth/<邮箱>/storage-state.json` 复制你希望迁移的状态到手机；不要复制 Chrome User Data、Windows 密钥、数据库或整个 runtime。
@@ -26,6 +28,8 @@
 - 不把账号文件、Cookie、`.env` 或完整请求正文提交到 Git。测试日志使用合成数据。
 
 方案 B（Android 重新登录）尚未实现。现有 Camoufox 浏览器登录在 Android 返回明确不支持，不下载桌面浏览器；不能把普通 WebView 当作已验证的 Google 登录方案。
+
+管理页“浏览器登录”的错误不是 Android 权限不足，无需授予额外系统权限。Android 构建的账号页提示返回 APK 主界面导入 JSON，隐藏桌面添加菜单。系统 Chrome / Custom Tabs 登录不能直接把 Cookie 提供给本应用；GeckoView 可作为后续实验，尚无本项目成功率数据。
 
 ## 配置与私有目录
 
@@ -40,6 +44,8 @@ Android 固定 `LISTEN_ADDR=127.0.0.1:2048`、`PREVIEW_LISTEN_ADDR=127.0.0.1:204
 使用 `specialUse` 前台服务声明“用户启动的本地 API 服务”，持有常驻通知；无开机自启、WakeLock、无限拉起。国产系统电池策略、锁屏或进程回收仍可能停止连接。APK 关闭原有桌面在线更新，以固定基线为准。
 
 ## 构建
+
+固定依赖的具体准备步骤见 [native/README.md](native/README.md)。`build-core.sh` 会以 Android 专用构建变量重建 WebUI；普通 Windows 构建保留原菜单。
 
 Go 核心要求 Android NDK / 定制 SpiderMonkey 的 Android 静态库，不能用 Linux ARM64 库替代。Linux/WSL 下先准备固定引擎源码、NDK r30、Rust 1.99.1 的 host/Android std、cbindgen 0.29.4、clang、libclang、Python 构建依赖。引擎源检出 `e297ff009d3b9afee0e223c02ae3271ef24d51b6`，构建脚本会应用 NDK 版本补丁，并复用 Mozilla 自带源包脚本的 Cargo workspace 过滤逻辑，仅构建 JS 相关成员。
 
