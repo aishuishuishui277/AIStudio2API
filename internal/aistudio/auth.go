@@ -145,6 +145,10 @@ func LoadStorageState(filePath string) (StorageState, error) {
 	if err != nil {
 		return StorageState{}, fmt.Errorf("读取 storage state: %w", err)
 	}
+	data, err = decodeStoredState(data)
+	if err != nil {
+		return StorageState{}, err
+	}
 	var state StorageState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return StorageState{}, fmt.Errorf("解析 storage state: %w", err)
@@ -165,6 +169,10 @@ func WriteStorageState(filePath string, state StorageState) error {
 		return fmt.Errorf("编码 storage state: %w", err)
 	}
 	data = append(data, '\n')
+	data, err = encodeStoredState(data)
+	if err != nil {
+		return err
+	}
 	return atomicWriteFile(filePath, data, 0o600)
 }
 
