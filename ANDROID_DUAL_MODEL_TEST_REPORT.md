@@ -40,7 +40,7 @@ Android 普通管理 WebView 移除唯一 FLAG_SECURE 调用及对应 import；�
 | 私有配置与 Keystore 保留 | PASS 实机 | PROXY/API key 行摘要、vault包装文件摘要及账号数量升级前后保持，已有加密账号可继续生成 |
 | Android管理页 ADB截图 | PASS 实机 | WebView完整模型页面可见，不是黑块 |
 | Android系统截图 | PASS 实机 | KEYCODE_SYSRQ 产生新的系统 Screenshot JPEG，已取回 |
-| Android录屏 | PASS 实机 | screenrecord录制5秒，解码视频实际帧看到完整WebView内容 |
+| Android录屏 | PASS 实机 | screenrecord设置5秒上限，实际成片3.92秒；解码帧看到完整WebView内容 |
 | 日志页面截图 | PASS 实机 | APK默认管理入口的日志页内容可见，日志中实际目标为gemini-3.8-flash / Playground |
 | 构建、Lint、16KB静态检查 | PASS | Go/NDK核心、WebUI typecheck/build、Gradle clean assembleDebug/lintDebug、签名、ZIP/ELF对齐；有既有Lint/构建警告 |
 
