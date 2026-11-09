@@ -1,51 +1,41 @@
-# Android GeckoView 登录 PoC
+# Android GeckoView / PG 认证实验
 
-第二阶段已完成：用户手动登录及 Playground 生成成功；在 vivo V2444A 上实测内置扩展、Native Messaging 和 23 个 Google Cookie 的无值元数据读取。升级、冷启动后均保留 Playground 会话。详见 [第二阶段报告](COOKIE_METADATA_REPORT.md)。第一阶段 `TEST_REPORT.md` 的网络阻塞结论是历史记录，已被新实测更新。真实 auth 导出/导入仍未实施。
+当前独立分支：`feature/android-geckoview-auth-3b1`。3B-1 已完成本机真实验收：加密账号持久化、Keystore 恢复、PG 进程重启与整包冷启动恢复，最终真实生成 HTTP 200 / OK。首次生成出现过一次 403，具体原因未确定；详见 [3B-1 完整报告](AUTH_3B1_REPORT.md)。没有进入 3B-2、自动续期、多账号或稳定版集成。
 
-## 隔离和验收边界
+## 使用
 
-基线 `58095c55e80aa2d415d172fe9c416a22feb1285d`，包含 `ff9b928` 及后续双模型功能。实验分支 `feature/android-geckoview-auth-poc`，独立 worktree，不合并稳定分支。
+实验包 ID 保持 `io.github.aistudio2api.authpoc`，必须核对原签名后用 `adb install -r` 保留数据升级。不要卸载或清数据；稳定 APK 独立保留。
 
-独立 ID `io.github.aistudio2api.authpoc`，独立 UID 和 Gecko 私有 profile。应用声明 INTERNET；Gecko 依赖合并 NETWORK_STATE、WAKE_LOCK、MODIFY_AUDIO_SETTINGS 等普通权限，没有申请账号、文件或运行时危险权限。不包含 Go/SpiderMonkey，不访问稳定应用的 API、文件或 Keystore。关闭 Android backup。Gecko Cookie 数据库属于浏览器私有数据；本轮没有额外实现数据库 Keystore 加密，不能声称与正式账号存储同等保护。
+默认页为纯原生恢复页，不启动 GeckoView：
 
-默认 Gecko UA、正常 TLS、无证书例外；关闭远程调试、控制台转发和 debug logging。不记录 URL 参数、标题、HTML、密码或 Cookie 值。第二阶段只有手动点击“检查登录 Cookie”才读取元数据，结果显示在对话框，并保存在应用私有 `files/cookie-metadata.json`（不含值）。Google 账号输入和验证仍由用户手动完成；输入期间不自动截屏、dump UI、抓完整 logcat 或复制 profile。
+- **启动已保存的 PG 账号**：首次从既有 3A 加密原件迁移到固定私有目录，后续仅加载固定目录并检查 Ready。
+- **验证已保存账号生成（一次）**：使用固定目录发起指定短文本请求，不读取浏览器 Cookie。
+- **打开原 GeckoView 登录 PoC**：保留原浏览器、元数据检查与 3A 手动导入实验；本轮恢复测试没有进入该页面。
 
-四级验收独立记录：编译通过、页面加载、Google 登录成功、auth 可用于生成服务。前一级成功不能替代后一级。本轮不向正式生成服务导入凭据。Google 明确拒绝嵌入式登录时停止；最多三轮修复，不反复切换 UA。
+首次 Ready 成功后，冷启动自动恢复并检查 Ready；不会自动生成。每次探针结束即关闭 Go runtime，Ready 是检查结果，不是常驻 API 服务。状态无效时明确报错，不回退读取 GeckoView 或旧 run 目录。
 
-## 现有认证代码
-
-- `android/.../MainActivity.kt:onActivityResult` 从文件选择器读取用户选定的 JSON（2 MiB 上限），发送到本机 `/api/accounts/import/cookies`。这不是 Android Google 登录。
-- `internal/app/admin.go:ImportAccountState` 验证账号/状态及 Signer；可解析并不等于 Google 接受。
-- `internal/aistudio/auth.go:WriteStorageState` 校验并原子保存；`auth_codec_android.go` 使用 AES-GCM，`KeyVault.kt` 用 Android Keystore 封装数据密钥。本 PoC 不改动这些实现。
-- Gecko Cookie 的 SameSite、session/expiry、partitionKey、firstPartyDomain、storeId 需要逐项分析，不能直接当成 Playwright storage-state。Chrome OAuth/设备绑定数据也不能假设从 Gecko Cookie 自动得到。
-
-## 官方 v0.3.3 研究
-
-只下载隔离参考源码，没有合并上游。tag commit：`718ea76f1c0d5a981c6368f936ec29c1acc5429e`。
-
-- [login.go](https://github.com/Mag1cFall/AIStudio2API/blob/v0.3.3/internal/camoufoxnative/login.go)：启动 Camoufox，通过 BiDi 检查 AI Studio prompt readiness，读取账号标识、Drive 授权，再导出 `storage.getCookies` 和各 origin 的 localStorage。
-- [liveview.go](https://github.com/Mag1cFall/AIStudio2API/blob/v0.3.3/internal/camoufoxnative/liveview.go)：`browsingContext.captureScreenshot` / `input.performActions`。
-- [login_view.go](https://github.com/Mag1cFall/AIStudio2API/blob/v0.3.3/internal/api/login_view.go) 与 [LoginViewer.vue](https://github.com/Mag1cFall/AIStudio2API/blob/v0.3.3/web/src/components/LoginViewer.vue)：WebSocket 画面和输入转发。
-- [Termux issue #105](https://github.com/Mag1cFall/AIStudio2API/issues/105)：Debian/proot、GTK/X11/Xvfb、Linux ARM64 包。用户成功反馈不能当作 Android GeckoView 成功证据。
-
-## Mozilla 文档与条件性扩展实验
-
-固定官方稳定 GeckoView `159.0.20261102144711`，AGP 9.4.1 / Kotlin 2.4.21 / Gradle 9.8.1 / JDK 21，compileSdk 37.2 / targetSdk 35。
-
-- [Getting Started](https://firefox-source-docs.mozilla.org/mobile/android/geckoview/consumer/geckoview-quick-start.html)：官方 Maven 和 Runtime/Session/View。
-- [WebExtensions](https://firefox-source-docs.mozilla.org/mobile/android/geckoview/consumer/web-extensions.html)：APK assets 内置扩展和 `ensureBuiltIn`；后台脚本的 `geckoViewAddons` + `nativeMessaging` 与原生 MessageDelegate 通信，不需要内容脚本权限。
-- [cookies.getAll](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/cookies/getAll)：cookies 和对应 host 权限。文档支持不等于实机已验证。
-
-第二阶段扩展已经实现并完成真实设备测试。限定三个 Google host 权限、手动触发一次扫描，在扩展内投影为无值白名单再发送消息；接收侧再次校验。expiry/partition 仅报告存在性，不传输具体内容。禁止发送 value、原始 Cookie 对象、localStorage 或任意异常对象。另有合成 getter 防护检查作为补充，不替代实机结果。Cookie API 成功仍不代表 auth 可用。
+持久目录为 `files/pg-auth-3b1/auth`，同一实验 Keystore alias 与原 AES-GCM codec。不会读取稳定 APK 私有数据或占用 2048。仅使用既有手机 VPN，不改变节点、代理或 TLS。
 
 ## 构建
 
-设置 JDK 21 的 JAVA_HOME 和 SDK 的 ANDROID_HOME，或在本目录 local.properties 配置 sdk.dir（已忽略）。从仓库根目录执行：
+先按 [3B-1 报告](AUTH_3B1_REPORT.md) 和 `android/native/README.md` 准备前端资源、NDK r30 与 SpiderMonkey，执行：
 
-```powershell
-.\android\gradlew.bat -p experiments/geckoview-auth assembleDebug lintDebug --console=plain
-adb install -r experiments/geckoview-auth/app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n io.github.aistudio2api.authpoc/.MainActivity
+```sh
+bash experiments/geckoview-auth/build-auth-probe.sh
 ```
 
-开发机如需代理，仅为构建进程配置 JVM http(s).proxyHost / proxyPort，不提交私人代理、不改变手机 VPN。手机运行不依赖电脑、Termux 或远程浏览器。稳定 APK 不升级、不清数据。退出 PoC 关闭会话，浏览器私有 profile 保留。
+设置 Android SDK / JDK 21 后，从仓库根目录执行：
+
+```powershell
+.\android\gradlew.bat -p experiments/geckoview-auth clean assembleDebug lintDebug
+adb install -r experiments/geckoview-auth/app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n io.github.aistudio2api.authpoc/.SavedAccountActivity
+```
+
+固定 GeckoView 159.0.20261102144711、AGP 9.4.1、Kotlin 2.4.21、Gradle 9.8.1、compileSdk 37.2、targetSdk 35；原生库必须先构建，不提交 JNI 产物、私有凭据或开发机配置。
+
+## 历史阶段
+
+[第二阶段报告](COOKIE_METADATA_REPORT.md) 记录用户手动登录后 23 个 Cookie 无值元数据、Native Messaging 与登录会话保留。第一阶段 `TEST_REPORT.md` 的网络阻塞是历史状态。3A 已证明 GeckoView 状态能由 PG 原认证器使用；本分支从其指定代码提交 a59288b 创建，不重新证明 Google 登录。
+
+官方 Termux 的 Debian/Camoufox/BiDi 画面转发不同于本 Android 原生 GeckoView 方案；本机运行不需要电脑、Termux 或 VPS。实验成果尚未合并稳定分支。
