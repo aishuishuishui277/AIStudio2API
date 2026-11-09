@@ -221,7 +221,7 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 	go server.Serve(listener)
 	defer server.Close()
 	result["listen_address"] = listener.Addr().String()
-	body := `{"model":"gemini-3.8-flash","messages":[{"role":"user","content":"Reply with exactly OK."}],"stream":false,"max_tokens":32}`
+	body := `{"model":"gemini-3.8-flash","messages":[{"role":"user","content":"Reply with exactly OK."}],"stream":false,"max_tokens":2048,"reasoning_effort":"minimal"}`
 	req, _ := http.NewRequestWithContext(ctx, "POST", "http://"+listener.Addr().String()+"/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
@@ -245,12 +245,25 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 	}
 	var completion struct {
 		Choices []struct {
-			Message struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if json.Unmarshal(encoded, &completion) != nil || len(completion.Choices) == 0 || strings.TrimSpace(completion.Choices[0].Message.Content) == "" {
+	decodeErr := json.Unmarshal(encoded, &completion)
+	result["json_valid"] = decodeErr == nil
+	result["choices_count"] = len(completion.Choices)
+	if len(completion.Choices) > 0 {
+		finish := completion.Choices[0].FinishReason
+		switch finish {
+		case "stop", "length", "content_filter", "tool_calls", "function_call":
+			result["finish_reason"] = finish
+		default:
+			result["finish_reason"] = "other"
+		}
+	}
+	if decodeErr != nil || len(completion.Choices) == 0 || strings.TrimSpace(completion.Choices[0].Message.Content) == "" {
 		result["error"] = "EMPTY_OR_INVALID_GENERATION"
 		return
 	}
