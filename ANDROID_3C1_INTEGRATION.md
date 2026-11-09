@@ -56,18 +56,49 @@ Gradle 使用已固定版本的 GeckoView；首次联网下载依赖时去掉 --
 集成构建关闭请求正文捕获和原始 PG 日志，原生界面仅显示脱敏状态。
 模型映射与按请求 fake stream 保留，仅为实际存在的上游模型展示别名。
 
-## 验收状态（进行中）
+## 最终验收（2026-11-09）
 
-- 离线认证状态机、原子发布测试：通过；不能代表真实认证通过。
-- HostOnly / SameSite / Cookie / 模型映射 / fake stream 定向回归：通过。
-- Kotlin 编译：通过。
-- 完整 ARM64 APK：编译通过；核心及认证库均为 AArch64、16 KB LOAD 对齐。
-- 独立安装和原生界面启动：真实设备通过；ADB 截图成功。
-- 三包并存：stable UID 10486、authpoc UID 10489、integration3c1 UID 10490；两个原包版本与更新时间未变。
-- 真实登录、认证保存、持续 API、生成与 SSE、用户停止重启、手机 SillyTavern：等待用户登录，尚未验证。
-- 没有执行 30 分钟压力测试；不将未运行项目记录为 PASS。
+设备 vivo V2444A / Android 15 / ARM64。按授权完成两次直接生成，无自动重试。
 
-真实 Google 登录、Cookie 读取及生成须分别等待用户确认。
+| 项目 | 结果 | 证据与边界 |
+| --- | --- | --- |
+| 离线状态机、首次发布、覆盖保护 | PASS | race 测试；不代替真实认证 |
+| Cookie hostOnly/SameSite、模型映射、fake stream 回归 | PASS | 定向源码测试 |
+| Kotlin、WebUI、双 ARM64 原生库、debug APK | PASS | Gradle 与 native 构建日志；16 KB LOAD 对齐 |
+| 新包安装、原生界面、ADB 截图 | PASS | 新包 UID 10490 |
+| 与 stable / authpoc 并存 | PASS | UID 10486 / 10489；原包版本、更新时间未变 |
+| 新包 Google 登录 | PASS（用户实测） | 用户亲自登录并确认进入 AI Studio |
+| 首次认证提交 | PASS | committed、directory_synced、encrypted_state_reload 均 true |
+| 浏览器 Cookie 读取 | 1 次 | 用户主动导入；服务启动、两次生成及重启后累计仍为 1 |
+| 持续服务 /health | PASS | 127.0.0.1:2148，独立 HTTP 200，最终复核仍 200 |
+| /v1/models | PASS | HTTP 200，97 个对外名称，含派生及假流别名；不能称为 97 个独立上游模型 |
+| gemini-3.8-flash 非流式 | PASS | HTTP 200、合法 JSON/choices、正文 OK、finish_reason=stop，4227 ms |
+| gemini-3.8-flash SSE | PASS | HTTP 200、2 个非空内容 delta、131 字符、stop 与 [DONE]，2385 ms，无错误事件 |
+| 真流配置 | PASS | 全局 FAKE_STREAM 默认 false；真实模型不在 fake 列表，假流别名在列表 |
+| 用户手动停止 | PASS | 手机本机 nc 对 2148、2149 均返回 Connection refused |
+| 服务重新启动 | PASS | 健康和模型目录再次 HTTP 200，真实/假流名称存在，新增 Cookie 读取 0 |
+| 手机 SillyTavern 两轮 | PASS（用户实测和截图） | 127.0.0.1:8000 聊天页；用户确认连接 2148、gemini-3.8-flash、逐步输出、无重复 Assistant 消息 |
+| 安装包与交付包一致 | PASS | 手机 base.apk 与交付 APK SHA256 完全一致 |
+
+SSE 两个内容事件在客户端记录为同一毫秒到达；通过的是真实流分支、多内容事件与完整协议结束，不能据此承诺平滑逐字显示。
+SillyTavern 首次失败为仍连接旧 2048 的 ECONNREFUSED，改用 2148 后成功；不是 Google 认证失效。
+两轮已满足本阶段“最多 3 轮”范围，不额外生成。无实机失败驱动的源码修复，修复轮数 0/3。
+
+## 未运行项目及限制
+
+- 本新包未再次执行整个 APK force-stop 冷启动验收；本轮已实测服务停止、重新启动和已保存账号恢复，不沿用旧 PoC 的结果冒充新包 PASS。
+- 未重新实测新包内的同账号二次替换、取消、previous 回滚或自然过期；复用 3B-2，离线状态机已通过。
+- 假流别名与定向回归通过，但本轮未额外向 Google 发起假流生成。
+- 不含后台自动续期、多账号管理；未做 30 分钟压力测试。
+- Android 系统仍可能回收进程；无无限重启保证。启动偏好默认关闭。
+- 为防敏感数据进入日志，集成版关闭原始 PG 请求日志和请求正文捕获，仅保留脱敏状态、生命周期日志和计数。
+- 本机 ss 的 netlink 检查权限不足；停止验收改用手机本机 nc，明确收到连接拒绝。
+
+## 交付与回退
+
+保留已安装 3C-1 服务运行，未再读取 Cookie 或生成。原 stable 与 authpoc 未停止、卸载、更新或清数据。
+如需回到旧稳定版，先在 3C-1 点击停止，客户端改回原稳定版地址及对应 Key；自行启动旧稳定版。不要删除新包数据或跨包复制账号。
+本阶段只提交独立实验分支，不合并原分支，不构建 release。源码提交和报告提交分开；APK 源码提交见下方。
 
 ## 初次安装产物
 
@@ -77,4 +108,4 @@ APK SHA256：`d834fa45c79b630ab441e45c14a6293ac0bc0462dde6127a647fd2238447b700`�
 
 签名证书 SHA256：`01de4840d8ff72e3f7d150ec57ca2d5288e1cdf1e28efd7ed870133f00d0c783`。
 
-当前停在用户手动登录检查点，未执行新包 Cookie 读取或生成。
+以上 APK 已完成本轮验收，未因文档更新重编译或重新安装。
