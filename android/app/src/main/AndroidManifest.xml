@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <application
-        android:label="AIStudio2API"
+        android:label="AIStudio2API 3C-1"
         android:icon="@drawable/app_icon"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:allowBackup="false"
@@ -20,6 +21,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SavedAccountActivity" android:exported="false" />
         <activity android:name=".WebActivity" android:exported="false" />
         <service android:name=".CoreService" android:exported="false"
             android:process=":core" android:stopWithTask="false"
@@ -27,5 +29,7 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-started on-device AI API server for local clients; runs until the user stops it, with a persistent notification and stop action." />
         </service>
+    <activity android:name="io.github.aistudio2api.authpoc.MainActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize" />
+        <service android:name="io.github.aistudio2api.authpoc.AuthProbeService" android:exported="false" android:process=":auth" />
     </application>
 </manifest>

@@ -2,13 +2,13 @@ plugins { id("com.android.application") }
 
 android {
     namespace = "io.github.aistudio2api.android"
-    compileSdk = 37
+    compileSdk { version = release(37) { minorApiLevel = 2 } }
     defaultConfig {
-        applicationId = "io.github.aistudio2api.android"
+        applicationId = "io.github.aistudio2api.integration3c1"
         minSdk = 35
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0-android-dual-stream"
+        versionCode = 1
+        versionName = "0.6.0-integration-3c1"
         ndk { abiFilters += "arm64-v8a" }
     }
     compileOptions {
@@ -34,3 +34,5 @@ val verifyNativeCore = tasks.register("verifyNativeCore") {
 }
 tasks.matching { it.name.startsWith("package") && it.name.endsWith("Debug") || it.name == "packageRelease" }
     .configureEach { dependsOn(verifyNativeCore) }
+
+dependencies { implementation("org.mozilla.geckoview:geckoview:159.0.20261102144711") }

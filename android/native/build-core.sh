@@ -15,13 +15,16 @@ native_stamp=$(sha256sum "$SPIDERMONKEY_ROOT/lib/libjs_static.a" "$SPIDERMONKEY_
 export CGO_CXXFLAGS="-I$SPIDERMONKEY_ROOT/include -DAISTUDIO_ANDROID_NATIVE_BUILD=0x$native_stamp"
 cd "$repo"
 # Rebuild with Android-only account guidance; ordinary desktop builds keep their menus.
-VITE_ANDROID_STANDALONE=1 npm --prefix web run build
+VITE_ANDROID_STANDALONE=1 VITE_ANDROID_INTEGRATION=1 npm --prefix web run build
 test -f internal/webui/dist/index.html
 out=android/app/src/main/jniLibs/arm64-v8a
 mkdir -p "$out"
-go build -mod=readonly -trimpath -buildmode=c-shared \
-    -ldflags='-s -w -X github.com/Mag1cFall/AIStudio2API/internal/app.version=v0.2.0-android-dual-stream -extldflags=-Wl,-z,max-page-size=16384' \
+go build -tags=integration3c1 -mod=readonly -trimpath -buildmode=c-shared \
+    -ldflags='-s -w -X github.com/Mag1cFall/AIStudio2API/internal/app.version=v0.6.0-integration-3c1 -extldflags=-Wl,-z,max-page-size=16384' \
     -o "$out/libaistudio2api.so" ./cmd/androidcore
+go build -tags=authpoc,integration3c1 -mod=readonly -trimpath -buildmode=c-shared \
+    -ldflags='-s -w -extldflags=-Wl,-z,max-page-size=16384' \
+    -o "$out/libauthprobe.so" ./cmd/androidauthprobe
 cp "$toolchain/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" "$out/"
 "$toolchain/bin/llvm-readelf" -W -h -l -d "$out/libaistudio2api.so" > "$out/elf-report.txt"
 python3 - "$out/elf-report.txt" <<'PY'

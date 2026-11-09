@@ -26,7 +26,7 @@ class WebActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
-                return uri.scheme != "http" || uri.host != "127.0.0.1" || uri.port !in listOf(2048, 2049)
+                return uri.scheme != "http" || uri.host != "127.0.0.1" || uri.port !in listOf(2148, 2149)
             }
         }
         val tab = intent.getStringExtra("tab").orEmpty().takeIf { it in listOf("accounts", "models", "logs", "settings") }.orEmpty()

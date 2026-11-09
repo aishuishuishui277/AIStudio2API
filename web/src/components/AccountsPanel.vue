@@ -41,12 +41,12 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale, errorText, logText } = useI18n()
-// Android uses the native document picker; desktop browser login is unavailable.
+// Android authentication is managed by the native app.
 const androidBuild = import.meta.env.VITE_ANDROID_STANDALONE === '1'
 const androidImportHelp = computed(() =>
   locale.value.startsWith('zh')
-    ? 'Android 版请返回 APK 主界面，点击“导入 Windows 账号状态 JSON”。当前不支持浏览器登录，无需增加系统权限。'
-    : 'On Android, return to the app home screen and select Import Windows account state JSON. Browser sign-in is unavailable; extra system permissions will not enable it.',
+    ? (import.meta.env.VITE_ANDROID_INTEGRATION === '1' ? '请先停止本应用服务，再返回 APK 主界面，使用“Google 登录”和“手动更新认证”。' : 'Android 版请返回 APK 主界面，点击“导入 Windows 账号状态 JSON”。当前不支持浏览器登录，无需增加系统权限。')
+    : (import.meta.env.VITE_ANDROID_INTEGRATION === '1' ? 'Stop this app service, then use Google login and Manual authentication update in the native app.' : 'On Android, return to the app home screen and select Import Windows account state JSON. Browser sign-in is unavailable; extra system permissions will not enable it.'),
 )
 const defaultAccountLocale = navigator.language
 const defaultAccountTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone

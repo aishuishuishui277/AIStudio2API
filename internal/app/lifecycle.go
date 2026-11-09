@@ -541,7 +541,7 @@ func (manager *runtimeManager) UpdateRuntimeConfig(ctx context.Context, value ap
 			updated.WarmWorkerLimit, updated.MaxActiveWorkers, updated.WarmStartupConcurrency, updated.PerAccountConcurrency,
 		)
 		updated = manager.decorateRuntimeConfig(updated, manager.current.config)
-		manager.ledger.SetBodyCapture(updated.RequestBodyLog)
+		manager.ledger.SetBodyCapture(updated.RequestBodyLog && !integrationPrivacy)
 		err = manager.logs.set(updated.LogFile, updated.LogMaxTotalMB)
 	}
 	manager.mu.Unlock()

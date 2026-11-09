@@ -138,7 +138,7 @@ func runService(ctx context.Context, cancel func(), cfg config.Config, options c
 	if err != nil {
 		return false, errors.Join(fmt.Errorf("打开请求账本: %w", err), manager.Close())
 	}
-	ledger.SetBodyCapture(cfg.RequestBodyLog)
+	ledger.SetBodyCapture(cfg.RequestBodyLog && !integrationPrivacy)
 	manager.ledger = ledger
 	if err := manager.seedFirstEvents(ctx); err != nil {
 		logService("WARN", "读取近期首事件样本失败 | 错误="+err.Error())

@@ -12,8 +12,14 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 object KeyVault {
-    private const val ALIAS = "aistudio2api-state-wrapper-v1"
+    private const val ALIAS = "aistudio2api-integration3c1-wrapper-v1"
 
+    fun existingDataKey(context: Context): String {
+        val store=KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        check(store.containsAlias(ALIAS))
+        check(context.getSharedPreferences("vault",Context.MODE_PRIVATE).contains("wrapped-data-key"))
+        return dataKey(context)
+    }
     fun dataKey(context: Context): String {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val key = if (store.containsAlias(ALIAS)) {
@@ -37,7 +43,7 @@ object KeyVault {
             plain = cipher.doFinal(payload.copyOfRange(12, payload.size))
         } else {
             check(!context.filesDir.resolve("core/auth").walkTopDown().any { it.name == "storage-state.json" }) {
-                "Credential key is missing; clear app data and reimport account state"
+                "Credential key is missing; stop without changing existing data"
             }
             plain = ByteArray(32).also { SecureRandom().nextBytes(it) }
             cipher.init(Cipher.ENCRYPT_MODE, key)

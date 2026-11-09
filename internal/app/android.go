@@ -4,8 +4,12 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -14,10 +18,13 @@ import (
 
 	"github.com/Mag1cFall/AIStudio2API/internal/aistudio"
 	"github.com/Mag1cFall/AIStudio2API/internal/config"
+	"github.com/Mag1cFall/AIStudio2API/internal/i18n"
 )
 
 // RunAndroid uses the existing service in a dedicated Android process; it never exits the JVM.
 func RunAndroid(ctx context.Context, directory string, key []byte, ready func(string)) error {
+	i18n.Stdout, i18n.Stderr = io.Discard, io.Discard
+	log.SetOutput(io.Discard)
 	if !filepath.IsAbs(directory) {
 		return errors.New("Android data directory must be absolute")
 	}
@@ -27,7 +34,7 @@ func RunAndroid(ctx context.Context, directory string, key []byte, ready func(st
 	if err := os.Chdir(directory); err != nil {
 		return err
 	}
-	for _, sub := range []string{"auth", "runtime/logs", "tmp"} {
+	for _, sub := range []string{"auth", "runtime/logs", "tmp", "cache", "config"} {
 		if err := os.MkdirAll(sub, 0o700); err != nil {
 			return err
 		}
@@ -38,9 +45,9 @@ func RunAndroid(ctx context.Context, directory string, key []byte, ready func(st
 		"XDG_CONFIG_HOME":      filepath.Join(directory, "config"),
 		"WAA_BACKEND":          config.WAABackendSpiderMonkey,
 		"AISTUDIO_AUTH_STATES": "auth",
-		"LISTEN_ADDR":          "127.0.0.1:2048",
-		"PREVIEW_LISTEN_ADDR":  "127.0.0.1:2049",
-		"AUTO_START":           "false",
+		"LISTEN_ADDR":          "127.0.0.1:2148",
+		"PREVIEW_LISTEN_ADDR":  "127.0.0.1:2149",
+		"AUTO_START":           "true",
 		"REQUEST_BODY_LOG":     "false",
 	} {
 		if err := os.Setenv(name, value); err != nil {
@@ -53,7 +60,19 @@ func RunAndroid(ctx context.Context, directory string, key []byte, ready func(st
 	clear(key)
 	initial, err := os.OpenFile(".env", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err == nil {
-		_, writeErr := initial.WriteString("WARM_WORKER_LIMIT=1\nMAX_ACTIVE_WORKERS=2\nWARM_STARTUP_CONCURRENCY=1\nPER_ACCOUNT_CONCURRENCY=1\nLOG_MAX_TOTAL_MB=50\n")
+		secret := make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			initial.Close()
+			return err
+		}
+		credentials := "PROXY_API_KEY=" + hex.EncodeToString(secret) + "\nADMIN_AUTH_ENABLED=true\nADMIN_USERNAME=admin\n"
+		if _, err := rand.Read(secret); err != nil {
+			initial.Close()
+			return err
+		}
+		credentials += "ADMIN_PASSWORD=" + hex.EncodeToString(secret) + "\n"
+		clear(secret)
+		_, writeErr := initial.WriteString(credentials + "WARM_WORKER_LIMIT=1\nMAX_ACTIVE_WORKERS=2\nWARM_STARTUP_CONCURRENCY=1\nPER_ACCOUNT_CONCURRENCY=1\nLOG_MAX_TOTAL_MB=50\n")
 		if err := errors.Join(writeErr, initial.Close()); err != nil {
 			return fmt.Errorf("initialize Android configuration: %w", err)
 		}
@@ -73,7 +92,7 @@ func RunAndroid(ctx context.Context, directory string, key []byte, ready func(st
 		return err
 	}
 	defer logs.set(false, 0)
-	slog.SetDefault(slog.New(slog.NewJSONHandler(logs, nil)))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	serviceReady := make(chan serviceReady, 1)
 	done := make(chan error, 1)
 	var restarting atomic.Bool

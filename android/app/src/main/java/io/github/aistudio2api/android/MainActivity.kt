@@ -14,7 +14,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     companion object {
-        const val BASE = "http://127.0.0.1:2048"
+        const val BASE = "http://127.0.0.1:2148"
         private const val IMPORT = 7
     }
     private lateinit var status: TextView
@@ -71,7 +71,7 @@ class MainActivity : Activity() {
         applySystemBars(scroll)
         content.addView(TextView(this).apply { text = "AIStudio2API"; textSize = 24f })
         status = TextView(this).apply { text = "核心：STOPPED"; textSize = 16f }
-        generation = TextView(this).apply { text = "API：$BASE/v1\n端口：2048 · ARM64" }
+        generation = TextView(this).apply { text = "API：$BASE/v1\n端口：2148 · ARM64" }
         content.addView(status)
         content.addView(generation)
         fun button(label: String, action: () -> Unit): Button = Button(this).also {
@@ -79,6 +79,9 @@ class MainActivity : Activity() {
             it.setOnClickListener { action() }
             content.addView(it)
         }
+        button("Google 登录") { startActivity(Intent(this, io.github.aistudio2api.authpoc.MainActivity::class.java)) }
+        button("手动更新认证") { startActivity(Intent(this, io.github.aistudio2api.authpoc.MainActivity::class.java)) }
+        button("检查账号") { startActivity(Intent(this, SavedAccountActivity::class.java)) }
         button("启动本地服务") {
             try {
                 startForegroundService(Intent(this, CoreService::class.java).setAction(CoreService.START))
@@ -103,6 +106,7 @@ class MainActivity : Activity() {
             }, IMPORT)
         }
         importButton.isEnabled = false
+        importButton.visibility = android.view.View.GONE
         button("查看服务日志") { showLogs() }
         button("测试 Google 网络连接") {
             if (!running) showMessage("请先启动本地服务")
@@ -116,13 +120,32 @@ class MainActivity : Activity() {
                 .setPrimaryClip(ClipData.newPlainText("OpenAI API", "$BASE/v1"))
             showMessage("已复制 $BASE/v1")
         }
+        button("复制 API Key") { copyConfigSecret("PROXY_API_KEY") }
+        button("复制管理密码（用户名 admin）") { copyConfigSecret("ADMIN_PASSWORD") }
+        val preferences=getSharedPreferences("startup",MODE_PRIVATE)
+        content.addView(CheckBox(this).apply {
+            text="打开应用时启动已保存账号服务"; isChecked=preferences.getBoolean("enabled",false)
+            setOnCheckedChangeListener { _,enabled -> preferences.edit().putBoolean("enabled",enabled).apply() }
+        })
+        if(savedInstanceState==null && preferences.getBoolean("enabled",false)) {
+            startForegroundService(Intent(this,CoreService::class.java).setAction(CoreService.START))
+        }
         button("停止并退出") { stopCore(); finish() }
         content.addView(TextView(this).apply {
-            text = "先启动本地服务，导入 storage-state.json，再启动生成服务。模型列表以账号实际返回为准。手机网络需能连接 Google。"
+            text = "先在 Google 登录页手动登录并确认保存认证，再启动本地服务。模型列表以账号实际返回为准。手机网络需能连接 Google。"
         })
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
+    }
+
+    private fun copyConfigSecret(name: String) {
+        val value=try { filesDir.resolve("core/.env").readLines().firstOrNull { it.startsWith("$name=") }?.substringAfter('=') } catch (_: Exception) {null}
+        if(value.isNullOrEmpty()){showMessage("请先启动服务以初始化配置");return}
+        val clip=ClipData.newPlainText(name,value)
+        clip.description.extras=PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE",true) }
+        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+        showMessage("已复制，请勿分享")
     }
 
     private fun bindCore() {
@@ -232,6 +255,7 @@ class MainActivity : Activity() {
                     .joinToString("\n") { "核心进程退出：reason=${it.reason}, status=${it.status}, time=${it.timestamp}, PSS=${it.pss}KB" }
             } catch (_: RuntimeException) { "" }
             val file = filesDir.resolve("core/runtime/logs/aistudio2api.log")
+            val lifecycle=filesDir.resolve("service-state.txt").let {if(it.isFile)it.readText() else ""}
             val error = filesDir.resolve("service-error.txt").let { if (it.isFile) it.readText() else "" }
             val text = if (file.isFile) java.io.RandomAccessFile(file, "r").use {
                 it.seek(maxOf(0L, it.length() - 65536))
@@ -239,7 +263,7 @@ class MainActivity : Activity() {
                 it.readFully(bytes)
                 bytes.toString(Charsets.UTF_8)
             } else "尚无核心日志"
-            runOnUiThread { showMessage((exits + "\n" + error + "\n" + text).trim()) }
+            runOnUiThread { showMessage((exits + "\n" + lifecycle + "\n" + error + "\n" + text).trim()) }
         }
     }
 }

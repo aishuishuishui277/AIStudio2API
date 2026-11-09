@@ -13,11 +13,12 @@ class CoreService : Service() {
         const val QUERY = 1
         const val PROBE = 2
         private const val CHANNEL = "local-api"
-        private const val NOTIFICATION = 2048
+        private const val NOTIFICATION = 2148
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
+    private var lease: ProcessLease? = null
     private var state = "STOPPED"
     private var detail = ""
     private var stopping = false
@@ -60,7 +61,8 @@ class CoreService : Service() {
         }
         if (intent?.action != START || state == "RUNNING" || state == "STARTING" || stopping) return START_NOT_STICKY
         state = "STARTING"
-        detail = "正在启动 127.0.0.1:2048"
+        recordState()
+        detail = "正在启动 127.0.0.1:2148"
         try {
             startForeground(NOTIFICATION, notification(detail), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             foreground = true
@@ -70,17 +72,23 @@ class CoreService : Service() {
         }
         worker.execute {
             val error = try {
-                val stopped = NativeCore.stop()
-                if (stopped.isNotEmpty()) stopped
-                else NativeCore.start(filesDir.resolve("core").absolutePath, KeyVault.dataKey(this))
+                lease=ProcessLease.acquire(this)
+                if(lease==null) "OPERATION_BUSY_STOP_AUTH_FIRST"
+                else if(filesDir.resolve("core/auth").walkTopDown().none { it.name=="storage-state.json" }) "AUTH_REQUIRED"
+                else {
+                    val stopped = NativeCore.stop()
+                    if (stopped.isNotEmpty()) "CORE_STOP_TIMEOUT"
+                    else NativeCore.start(filesDir.resolve("core").absolutePath, KeyVault.existingDataKey(this)).let { if(it.isEmpty()) "" else "CORE_START_FAILED" }
+                }
             }
-                catch (error: Throwable) { "本地核心加载失败：${error.javaClass.simpleName}: ${error.message}" }
+                catch (error: Throwable) { "本地核心加载失败：${error.javaClass.simpleName}" }
             handler.post {
                 if (stopping) return@post
-                if (error.isNotEmpty()) fail(error)
+                if (error.isNotEmpty()) { fail(error) }
                 else {
                     state = "RUNNING"
-                    detail = "127.0.0.1:2048 · 请在管理页启动生成服务"
+                    recordState()
+                    detail = "127.0.0.1:2148 · 常驻服务已启动"
                     getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification(detail))
                     handler.postDelayed(monitor, 2000)
                 }
@@ -98,6 +106,14 @@ class CoreService : Service() {
         }
     }
 
+    private fun recordState() {
+        try {
+            val file=filesDir.resolve("service-state.txt")
+            val previous=if(file.isFile) file.readText().takeLast(8192) else ""
+            file.writeText(previous+"${System.currentTimeMillis()} $state\n")
+        } catch (_: Exception) {}
+    }
+
     private fun notification(text: String): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 1, Intent(this, CoreService::class.java).setAction(STOP), PendingIntent.FLAG_IMMUTABLE)
@@ -109,6 +125,7 @@ class CoreService : Service() {
 
     private fun fail(message: String) {
         state = "FAILED"
+        recordState()
         detail = message
         filesDir.resolve("service-error.txt").writeText(message)
         if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
@@ -125,7 +142,9 @@ class CoreService : Service() {
         worker.execute {
             val error = try { NativeCore.stop() } catch (error: Throwable) { error.javaClass.simpleName }
             handler.post {
+                if(error.isEmpty()){lease?.close();lease=null}
                 state = if (error.isEmpty()) "STOPPED" else "FAILED"
+                recordState()
                 detail = error
                 if (error.isNotEmpty()) filesDir.resolve("service-error.txt").writeText(error)
                 if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
@@ -140,7 +159,7 @@ class CoreService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(monitor)
-        if (!stopping && state != "STOPPED") worker.execute { try { NativeCore.stop() } catch (_: Throwable) { } }
+        if (!stopping && state != "STOPPED") worker.execute { try { if(NativeCore.stop().isEmpty()){lease?.close();lease=null} } catch (_: Throwable) { } }
         worker.shutdown()
         super.onDestroy()
     }

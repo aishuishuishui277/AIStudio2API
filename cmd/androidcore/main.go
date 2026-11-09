@@ -63,7 +63,7 @@ func CoreStart(directory, encodedKey *C.char) *C.char {
 		clear(key)
 		core.Lock()
 		if err != nil {
-			current.err = err.Error()
+			current.err = "CORE_RUNTIME_FAILURE"
 		}
 		close(current.done)
 		core.Unlock()
