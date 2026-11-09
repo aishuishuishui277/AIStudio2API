@@ -62,7 +62,19 @@ Gradle 使用已固定版本的 GeckoView；首次联网下载依赖时去掉 --
 - HostOnly / SameSite / Cookie / 模型映射 / fake stream 定向回归：通过。
 - Kotlin 编译：通过。
 - 完整 ARM64 APK：编译通过；核心及认证库均为 AArch64、16 KB LOAD 对齐。
-- 独立安装、真实登录、认证保存、持续 API、生成与 SSE、用户停止重启、手机 SillyTavern：待验证。
+- 独立安装和原生界面启动：真实设备通过；ADB 截图成功。
+- 三包并存：stable UID 10486、authpoc UID 10489、integration3c1 UID 10490；两个原包版本与更新时间未变。
+- 真实登录、认证保存、持续 API、生成与 SSE、用户停止重启、手机 SillyTavern：等待用户登录，尚未验证。
 - 没有执行 30 分钟压力测试；不将未运行项目记录为 PASS。
 
 真实 Google 登录、Cookie 读取及生成须分别等待用户确认。
+
+## 初次安装产物
+
+源码提交：`37250acaa77f79307dafcaabc94225062823fd11`。
+
+APK SHA256：`d834fa45c79b630ab441e45c14a6293ac0bc0462dde6127a647fd2238447b700`。
+
+签名证书 SHA256：`01de4840d8ff72e3f7d150ec57ca2d5288e1cdf1e28efd7ed870133f00d0c783`。
+
+当前停在用户手动登录检查点，未执行新包 Cookie 读取或生成。
