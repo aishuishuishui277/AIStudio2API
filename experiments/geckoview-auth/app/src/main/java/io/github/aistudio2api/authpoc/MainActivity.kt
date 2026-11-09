@@ -23,7 +23,7 @@ class MainActivity : Activity() {
     private lateinit var forward: Button
     private var lastLoadError: String? = null
     private lateinit var cookieInspector: CookieInspector
-    private lateinit var authProbe: AuthProbeController
+    private lateinit var authProbe: AuthUpdateController
     private val sessions = mutableListOf<GeckoSession>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,13 +54,15 @@ class MainActivity : Activity() {
         root.addView(cookieButton)
         root.addView(cookieStatus)
         cookieInspector = CookieInspector(this, cookieButton, cookieStatus)
-        val authButton = Button(this).apply { text = "验证 PG 认证兼容性" }
-        val authStatus = TextView(this).apply { text = "3A 待用户主动触发；不自动读取真实 Cookie"; textSize = 12f }
+        val authButton = Button(this).apply { text = "手动更新 PG 认证" }
+        val authStatus = TextView(this).apply { text = "3B-2：登录完成后手动确认；不自动读取 Cookie"; textSize = 12f }
         root.addView(authButton)
         root.addView(authStatus)
-        authProbe = AuthProbeController(this, authButton, authStatus, cookieInspector)
+        val cancelUpdate = Button(this).apply { text = "取消认证更新" }
+        root.addView(cancelUpdate)
+        authProbe = AuthUpdateController(this, authButton, cancelUpdate, authStatus, cookieInspector)
         root.addView(TextView(this).apply {
-            text = "独立 3A 实验 · 不访问稳定服务\n仅点击验证按钮后，在应用内部验证认证"
+            text = "独立 3B-2 实验 · 保留原浏览器会话\n不自动填表、提交登录或更新认证"
             textSize = 12f
             setPadding(12, 0, 12, 6)
         })

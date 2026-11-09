@@ -6,8 +6,8 @@ android {
         applicationId = "io.github.aistudio2api.authpoc"
         minSdk = 35
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0-saved-auth-3b1"
+        versionCode = 5
+        versionName = "0.5.0-manual-auth-update-3b2"
         ndk { abiFilters += "arm64-v8a" }
     }
     compileOptions {

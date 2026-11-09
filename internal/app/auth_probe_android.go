@@ -39,24 +39,43 @@ func RunSavedAccountProbe(directory string, key []byte, generate bool) map[strin
 	return runPGProbe(directory, key, nil, true, generate)
 }
 
-func runPGProbe(directory string, key, raw []byte, restore, generate bool) (result map[string]any) {
+type pgProbeOptions struct {
+	context         context.Context
+	runDirectory    string
+	expectedAccount string
+}
+
+func runPGProbe(directory string, key, raw []byte, restore, generate bool, options ...pgProbeOptions) (result map[string]any) {
+	var option pgProbeOptions
+	if len(options) > 0 {
+		option = options[0]
+	}
+	parent := option.context
+	if parent == nil {
+		parent = context.Background()
+	}
 	started := time.Now()
 	result = map[string]any{"stage": "input", "success": false, "real_upstream": true, "saved_account_restore": restore}
-	defer func() { result["elapsed_ms"] = time.Since(started).Milliseconds() }()
+	defer func() {
+		result["elapsed_ms"] = time.Since(started).Milliseconds()
+		classifyProbeResult(result)
+	}()
 	defer clear(raw)
 	defer clear(key)
 	defer func() {
 		if recover() != nil {
 			result["error"] = "INTERNAL_FAILURE"
+			result["success"] = false
 		}
 	}()
 	i18n.Stdout, i18n.Stderr = io.Discard, io.Discard
 	log.SetOutput(io.Discard)
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
 	defer cancel()
 	fail := func(err error) map[string]any {
 		result["error"] = probeError(err)
+		result["category"] = classifyProbeError(err)
 		types := []string{}
 		for next := err; next != nil && len(types) < 8; next = errors.Unwrap(next) {
 			types = append(types, reflect.TypeOf(next).String())
@@ -73,7 +92,9 @@ func runPGProbe(directory string, key, raw []byte, restore, generate bool) (resu
 	}
 	var runDir string
 	var err error
-	if restore {
+	if option.runDirectory != "" {
+		runDir = option.runDirectory
+	} else if restore {
 		runDir = filepath.Join(directory, "pg-auth-3b1")
 		err = os.MkdirAll(runDir, 0700)
 	} else {
@@ -207,6 +228,14 @@ func runPGProbe(directory string, key, raw []byte, restore, generate bool) (resu
 		if err != nil {
 			return fail(err)
 		}
+		if option.expectedAccount != "" && account.ID != option.expectedAccount {
+			result["error"] = "ACCOUNT_MISMATCH"
+			result["same_account"] = false
+			return
+		}
+		if option.expectedAccount != "" {
+			result["same_account"] = true
+		}
 		result["account_identified"] = account.ID != "" // Never return account email.
 		result["encrypted_state_saved"] = true
 		catalog, _ := admin.CatalogModels(ctx)
@@ -255,7 +284,11 @@ func runPGProbe(directory string, key, raw []byte, restore, generate bool) (resu
 		ready := len(statuses) == 1 && statuses[0].State == "ready"
 		result["account_ready"] = ready
 		if !ready {
-			return fail(errSavedAuthRequired)
+			if len(statuses) == 1 && statuses[0].State == "auth_required" {
+				return fail(errSavedAuthRequired)
+			}
+			result["error"] = "ACCOUNT_NOT_READY"
+			return
 		}
 		defer func() {
 			// Close happens before this audit, so last Set-Cookie writes have settled.
@@ -268,6 +301,21 @@ func runPGProbe(directory string, key, raw []byte, restore, generate bool) (resu
 			result["generation_requested"] = false
 			return
 		}
+	}
+	if !generate {
+		statuses, e := admin.Accounts(ctx)
+		if e != nil {
+			return fail(e)
+		}
+		if len(statuses) != 1 || statuses[0].State != "ready" {
+			result["error"] = "ACCOUNT_NOT_READY"
+			return
+		}
+		result["account_ready"] = true
+		result["success"] = true
+		result["generation_requested"] = false
+		result["stage"] = "candidate_validated"
+		return
 	}
 	result["generation_requested"] = true
 	result["stage"] = "single_generation"
@@ -313,8 +361,9 @@ func runPGProbe(directory string, key, raw []byte, restore, generate bool) (resu
 	}
 	defer clear(encoded)
 	if response.StatusCode != 200 {
-		result["error"] = probeError(errors.New(string(encoded)))
+		result["error"] = classifyProbeResponse(response.StatusCode, encoded)
 		result["upstream_diagnostic"] = savedErrorDiagnostic(encoded)
+		result["category"] = classifyProbeResponse(response.StatusCode, encoded)
 		return
 	}
 	var completion struct {
@@ -378,27 +427,7 @@ func probeError(err error) string {
 	if errors.As(err, &pathErr) {
 		return "PRIVATE_STORAGE_FAILURE"
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return "NETWORK_FAILURE"
-	}
-	s := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(s, "timeout"), strings.Contains(s, "deadline"), strings.Contains(s, "dial tcp"), strings.Contains(s, "no such host"):
-		return "NETWORK_OR_STAGE_TIMEOUT"
-	case strings.Contains(s, "drive"):
-		return "DRIVE_AUTHORIZATION_FAILED"
-	case strings.Contains(s, "waa"), strings.Contains(s, "spidermonkey"), strings.Contains(s, "botguard"):
-		return "WAA_INITIALIZATION_FAILED"
-	case strings.Contains(s, "401"), strings.Contains(s, "403"), strings.Contains(s, "permission"), strings.Contains(s, "unauthenticated"):
-		return "UPSTREAM_AUTH_REJECTED"
-	case strings.Contains(s, "邮箱"), strings.Contains(s, "email"):
-		return "ACCOUNT_IDENTITY_FAILED"
-	case strings.Contains(s, "signed_out"), strings.Contains(s, "未登录"), strings.Contains(s, "已失效"):
-		return "GOOGLE_SESSION_INVALID"
-	default:
-		return "STAGE_FAILED_UNCLASSIFIED"
-	}
+	return classifyProbeError(err)
 }
 
 // Finite vocabulary only; never forward arbitrary server text, codes, or headers.

@@ -16,3 +16,15 @@ JNIEXPORT jstring JNICALL Java_io_github_aistudio2api_authpoc_AuthNative_restore
  (*e)->ReleaseStringUTFChars(e,dir,d);(*e)->ReleaseStringUTFChars(e,key,k);
  jstring result=(*e)->NewStringUTF(e,r);AuthProbeFree(r);return result;
 }
+
+JNIEXPORT jstring JNICALL Java_io_github_aistudio2api_authpoc_AuthNative_prepareUpdate(JNIEnv *e,jclass c,jstring dir,jstring key,jbyteArray payload){
+ const char *d=(*e)->GetStringUTFChars(e,dir,0),*k=(*e)->GetStringUTFChars(e,key,0);
+ jbyte *p=(*e)->GetByteArrayElements(e,payload,0);
+ if(!d||!k||!p){if(d)(*e)->ReleaseStringUTFChars(e,dir,d);if(k)(*e)->ReleaseStringUTFChars(e,key,k);if(p)(*e)->ReleaseByteArrayElements(e,payload,p,JNI_ABORT);return NULL;}
+ char *r=AuthPrepare((char*)d,(char*)k,p,(*e)->GetArrayLength(e,payload));
+ (*e)->ReleaseByteArrayElements(e,payload,p,JNI_ABORT);(*e)->ReleaseStringUTFChars(e,dir,d);(*e)->ReleaseStringUTFChars(e,key,k);
+ jstring result=(*e)->NewStringUTF(e,r);AuthProbeFree(r);return result;
+}
+
+JNIEXPORT jstring JNICALL Java_io_github_aistudio2api_authpoc_AuthNative_commitUpdate(JNIEnv *e,jclass c){char *r=AuthCommit();jstring result=(*e)->NewStringUTF(e,r);AuthProbeFree(r);return result;}
+JNIEXPORT jstring JNICALL Java_io_github_aistudio2api_authpoc_AuthNative_cancelUpdate(JNIEnv *e,jclass c){char *r=AuthCancel();jstring result=(*e)->NewStringUTF(e,r);AuthProbeFree(r);return result;}
