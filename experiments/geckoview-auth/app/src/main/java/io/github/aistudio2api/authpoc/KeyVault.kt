@@ -14,6 +14,14 @@ import javax.crypto.spec.GCMParameterSpec
 object KeyVault {
     private const val ALIAS = "aistudio2api-authprobe-wrapper-v1"
 
+    // Restore must never create or replace a wrapping key or data key.
+    fun existingDataKey(context: Context): String {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        check(store.containsAlias(ALIAS))
+        check(context.getSharedPreferences("vault", Context.MODE_PRIVATE).contains("wrapped-data-key"))
+        return dataKey(context)
+    }
+
     fun dataKey(context: Context): String {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val key = if (store.containsAlias(ALIAS)) {
@@ -36,7 +44,7 @@ object KeyVault {
             cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, payload.copyOfRange(0, 12)))
             plain = cipher.doFinal(payload.copyOfRange(12, payload.size))
         } else {
-            check(!context.filesDir.resolve("pg-auth-3a").walkTopDown().any { it.name == "storage-state.json" }) {
+            check(!context.filesDir.walkTopDown().any { it.name == "storage-state.json" }) {
                 "Experimental credential key is missing; stop without changing existing data"
             }
             plain = ByteArray(32).also { SecureRandom().nextBytes(it) }

@@ -4,9 +4,11 @@
     <application android:label="AI Studio 登录 PoC" android:allowBackup="false"
         android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service android:name=".AuthProbeService" android:exported="false" android:process=":pgprobe" />
-        <activity android:name=".MainActivity" android:exported="true"
+        <activity android:name=".MainActivity" android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".SavedAccountActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

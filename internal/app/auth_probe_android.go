@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Mag1cFall/AIStudio2API/internal/aistudio"
@@ -30,7 +31,18 @@ import (
 // RunAuthProbe is compiled only for the isolated :pgprobe process. All errors
 // cross JNI as fixed classifications, never as upstream text or Cookie data.
 func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
-	result = map[string]any{"stage": "input", "success": false, "real_upstream": true}
+	return runPGProbe(directory, key, raw, false, true)
+}
+
+// RunSavedAccountProbe never calls the cookie parser/importer or GeckoView.
+func RunSavedAccountProbe(directory string, key []byte, generate bool) map[string]any {
+	return runPGProbe(directory, key, nil, true, generate)
+}
+
+func runPGProbe(directory string, key, raw []byte, restore, generate bool) (result map[string]any) {
+	started := time.Now()
+	result = map[string]any{"stage": "input", "success": false, "real_upstream": true, "saved_account_restore": restore}
+	defer func() { result["elapsed_ms"] = time.Since(started).Milliseconds() }()
 	defer clear(raw)
 	defer clear(key)
 	defer func() {
@@ -59,7 +71,14 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return fail(err)
 	}
-	runDir, err := os.MkdirTemp(directory, "run-")
+	var runDir string
+	var err error
+	if restore {
+		runDir = filepath.Join(directory, "pg-auth-3b1")
+		err = os.MkdirAll(runDir, 0700)
+	} else {
+		runDir, err = os.MkdirTemp(directory, "run-")
+	}
 	if err != nil {
 		return fail(err)
 	}
@@ -75,73 +94,90 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 	if err = aistudio.SetAndroidStorageKey(key); err != nil {
 		return fail(err)
 	}
-	// The existing parser discards unknown partition fields. Reject them first.
-	var document struct {
-		Cookies []struct {
-			Name             string          `json:"name"`
-			Value            string          `json:"value"`
-			Domain           string          `json:"domain"`
-			Path             string          `json:"path"`
-			HostOnly         bool            `json:"hostOnly"`
-			Secure           bool            `json:"secure"`
-			HTTPOnly         bool            `json:"httpOnly"`
-			SameSite         string          `json:"sameSite"`
-			Session          bool            `json:"session"`
-			Expires          float64         `json:"expires"`
-			PartitionKey     json.RawMessage `json:"partitionKey"`
-			FirstPartyDomain string          `json:"firstPartyDomain"`
-		} `json:"cookies"`
-	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&document); err != nil {
-		result["error"] = "COOKIE_SCHEMA_INVALID"
-		return
-	}
-	if len(document.Cookies) == 0 {
-		result["error"] = "COOKIE_FIELDS_MISSING"
-		return
-	}
-	for _, c := range document.Cookies {
-		if len(c.PartitionKey) > 0 && string(c.PartitionKey) != "null" || c.FirstPartyDomain != "" {
-			result["error"] = "PARTITION_UNSUPPORTED"
+	var state aistudio.StorageState
+	if restore {
+		result["stage"] = "saved_state_loading"
+		if err = prepareSavedAccount(directory, runDir, result); err != nil {
+			return fail(err)
+		}
+		result["keystore_restored"] = true
+	} else {
+		// The existing parser discards unknown partition fields. Reject them first.
+		var document struct {
+			Cookies []struct {
+				Name             string          `json:"name"`
+				Value            string          `json:"value"`
+				Domain           string          `json:"domain"`
+				Path             string          `json:"path"`
+				HostOnly         bool            `json:"hostOnly"`
+				Secure           bool            `json:"secure"`
+				HTTPOnly         bool            `json:"httpOnly"`
+				SameSite         string          `json:"sameSite"`
+				Session          bool            `json:"session"`
+				Expires          float64         `json:"expires"`
+				PartitionKey     json.RawMessage `json:"partitionKey"`
+				FirstPartyDomain string          `json:"firstPartyDomain"`
+			} `json:"cookies"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err = decoder.Decode(&document); err != nil {
+			result["error"] = "COOKIE_SCHEMA_INVALID"
 			return
 		}
-		if c.Domain != ".google.com" && c.Domain != "google.com" && c.Domain != "accounts.google.com" && c.Domain != ".accounts.google.com" && c.Domain != "aistudio.google.com" && c.Domain != ".aistudio.google.com" {
-			result["error"] = "COOKIE_DOMAIN_INVALID"
-			return
-		}
-		if c.Name == "" || c.Value == "" || !strings.HasPrefix(c.Path, "/") {
+		if len(document.Cookies) == 0 {
 			result["error"] = "COOKIE_FIELDS_MISSING"
 			return
 		}
-		if c.HostOnly && strings.HasPrefix(c.Domain, ".") {
-			result["error"] = "COOKIE_HOST_ONLY_CONFLICT"
-			return
+		for _, c := range document.Cookies {
+			if len(c.PartitionKey) > 0 && string(c.PartitionKey) != "null" || c.FirstPartyDomain != "" {
+				result["error"] = "PARTITION_UNSUPPORTED"
+				return
+			}
+			if c.Domain != ".google.com" && c.Domain != "google.com" && c.Domain != "accounts.google.com" && c.Domain != ".accounts.google.com" && c.Domain != "aistudio.google.com" && c.Domain != ".aistudio.google.com" {
+				result["error"] = "COOKIE_DOMAIN_INVALID"
+				return
+			}
+			if c.Name == "" || c.Value == "" || !strings.HasPrefix(c.Path, "/") {
+				result["error"] = "COOKIE_FIELDS_MISSING"
+				return
+			}
+			if c.HostOnly && strings.HasPrefix(c.Domain, ".") {
+				result["error"] = "COOKIE_HOST_ONLY_CONFLICT"
+				return
+			}
+			if c.SameSite != "" && c.SameSite != "None" && c.SameSite != "Lax" && c.SameSite != "Strict" {
+				result["error"] = "COOKIE_SAMESITE_INVALID"
+				return
+			}
+			if !c.Session && c.Expires <= float64(time.Now().Unix()) {
+				result["error"] = "COOKIE_EXPIRED"
+				return
+			}
+			if c.Session && c.Expires != -1 {
+				result["error"] = "COOKIE_EXPIRY_INVALID"
+				return
+			}
 		}
-		if c.SameSite != "" && c.SameSite != "None" && c.SameSite != "Lax" && c.SameSite != "Strict" {
-			result["error"] = "COOKIE_SAMESITE_INVALID"
-			return
+		state, err = aistudio.ParseCookieText(string(raw))
+		if err != nil {
+			return fail(err)
 		}
-		if !c.Session && c.Expires <= float64(time.Now().Unix()) {
-			result["error"] = "COOKIE_EXPIRED"
-			return
+		result["format_converted"] = true
+		result["cookie_count"] = len(state.Cookies)
+		if _, err = aistudio.NewSigner().Authorization(state); err != nil {
+			return fail(err)
 		}
-		if c.Session && c.Expires != -1 {
-			result["error"] = "COOKIE_EXPIRY_INVALID"
-			return
-		}
+		result["core_accepted"] = true
 	}
-	state, err := aistudio.ParseCookieText(string(raw))
-	if err != nil {
-		return fail(err)
+	var savedBefore [32]byte
+	if restore {
+		saved, loadErr := aistudio.NewAccountStore(filepath.Join(runDir, "auth")).Load()
+		if loadErr != nil || len(saved) != 1 {
+			return fail(errSavedStateInvalid)
+		}
+		savedBefore = savedCookieDigest(saved[0].StorageState)
 	}
-	result["format_converted"] = true
-	result["cookie_count"] = len(state.Cookies)
-	if _, err = aistudio.NewSigner().Authorization(state); err != nil {
-		return fail(err)
-	}
-	result["core_accepted"] = true
 	result["stage"] = "runtime_initialization"
 	cfg := config.Default()
 	cfg.AuthStates = filepath.Join(runDir, "auth")
@@ -162,20 +198,34 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 	if err != nil {
 		return fail(err)
 	}
-	defer func() { cancel(); closeRuntime() }()
-	result["stage"] = "account_identification_and_import"
-	account, err := admin.ImportAccountState(ctx, api.AccountStateInput{StorageState: state, AuthUser: 0})
-	if err != nil {
-		return fail(err)
+	var closeOnce sync.Once
+	closeProbe := func() { closeOnce.Do(func() { cancel(); closeRuntime() }) }
+	defer closeProbe()
+	if !restore {
+		result["stage"] = "account_identification_and_import"
+		account, err := admin.ImportAccountState(ctx, api.AccountStateInput{StorageState: state, AuthUser: 0})
+		if err != nil {
+			return fail(err)
+		}
+		result["account_identified"] = account.ID != "" // Never return account email.
+		result["encrypted_state_saved"] = true
+		catalog, _ := admin.CatalogModels(ctx)
+		catalogIDs := []string{}
+		for _, m := range catalog {
+			catalogIDs = append(catalogIDs, m.ID)
+		}
+		result["models_after_import"] = catalogIDs
+	} else {
+		loaded, loadErr := admin.Accounts(ctx)
+		if loadErr != nil {
+			return fail(loadErr)
+		}
+		if len(loaded) != 1 {
+			return fail(errSavedAuthRequired)
+		}
+		result["account_identified"] = loaded[0].ID != ""
+		result["core_accepted"] = true
 	}
-	result["account_identified"] = account.ID != "" // Never return account email.
-	result["encrypted_state_saved"] = true
-	catalog, _ := admin.CatalogModels(ctx)
-	catalogIDs := []string{}
-	for _, m := range catalog {
-		catalogIDs = append(catalogIDs, m.ID)
-	}
-	result["models_after_import"] = catalogIDs
 	result["stage"] = "model_catalog_and_waa"
 	models, _, err := service.Start(ctx, func() {})
 	if err != nil {
@@ -197,6 +247,29 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 		result["error"] = "MODEL_NOT_AVAILABLE"
 		return
 	}
+	if restore {
+		statuses, statusErr := admin.Accounts(ctx)
+		if statusErr != nil {
+			return fail(statusErr)
+		}
+		ready := len(statuses) == 1 && statuses[0].State == "ready"
+		result["account_ready"] = ready
+		if !ready {
+			return fail(errSavedAuthRequired)
+		}
+		defer func() {
+			// Close happens before this audit, so last Set-Cookie writes have settled.
+			closeProbe()
+			auditSavedAccount(runDir, savedBefore, result)
+		}()
+		if !generate {
+			result["success"] = true
+			result["stage"] = "ready_check_complete"
+			result["generation_requested"] = false
+			return
+		}
+	}
+	result["generation_requested"] = true
 	result["stage"] = "single_generation"
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -241,6 +314,7 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 	defer clear(encoded)
 	if response.StatusCode != 200 {
 		result["error"] = probeError(errors.New(string(encoded)))
+		result["upstream_diagnostic"] = savedErrorDiagnostic(encoded)
 		return
 	}
 	var completion struct {
@@ -263,7 +337,7 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 			result["finish_reason"] = "other"
 		}
 	}
-	if decodeErr != nil || len(completion.Choices) == 0 || strings.TrimSpace(completion.Choices[0].Message.Content) == "" {
+	if decodeErr != nil || len(completion.Choices) == 0 || completion.Choices[0].FinishReason != "stop" || strings.TrimSpace(completion.Choices[0].Message.Content) == "" {
 		result["error"] = "EMPTY_OR_INVALID_GENERATION"
 		return
 	}
@@ -279,6 +353,15 @@ func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
 }
 
 func probeError(err error) string {
+	if errors.Is(err, errSavedAuthRequired) {
+		return "AUTH_REQUIRED"
+	}
+	if errors.Is(err, errSavedSourceAmbiguous) {
+		return "SAVED_SOURCE_AMBIGUOUS"
+	}
+	if errors.Is(err, errSavedStateInvalid) {
+		return "SAVED_STATE_INVALID"
+	}
 	if errors.Is(err, aistudio.ErrLoginCookieMissing) {
 		return "COOKIE_FIELDS_MISSING"
 	}
@@ -316,4 +399,47 @@ func probeError(err error) string {
 	default:
 		return "STAGE_FAILED_UNCLASSIFIED"
 	}
+}
+
+// Finite vocabulary only; never forward arbitrary server text, codes, or headers.
+func savedErrorDiagnostic(body []byte) map[string]any {
+	var failure struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	output := map[string]any{"json_error": json.Unmarshal(body, &failure) == nil}
+	switch failure.Error.Code {
+	case "account_unavailable", "account_required", "upstream_error", "rate_limit_exceeded", "model_not_found", "invalid_request":
+		output["code"] = failure.Error.Code
+	default:
+		output["code"] = "other"
+	}
+	message := strings.ToLower(failure.Error.Message)
+	flags := []string{}
+	for _, item := range []struct {
+		flag     string
+		patterns []string
+	}{
+		{"region_restriction", []string{"region not supported"}},
+		{"account_restriction", []string{"account not supported"}},
+		{"permission_denied", []string{"permission_denied", "permission denied", "does not have permission"}},
+		{"authentication", []string{"unauthenticated", "signed_out", "invalid authentication", "expired"}},
+		{"bot_challenge", []string{"botguard", "recaptcha", "unusual traffic", "suspicious", "waa"}},
+		{"drive", []string{"drive", "generateaccesstoken"}},
+		{"generate_content", []string{"generatecontent"}},
+		{"generate_interaction", []string{"generateinteraction"}},
+		{"oauth", []string{"oauth"}},
+		{"quota", []string{"quota", "resource_exhausted"}},
+	} {
+		for _, pattern := range item.patterns {
+			if strings.Contains(message, pattern) {
+				flags = append(flags, item.flag)
+				break
+			}
+		}
+	}
+	output["categories"] = flags
+	return output
 }

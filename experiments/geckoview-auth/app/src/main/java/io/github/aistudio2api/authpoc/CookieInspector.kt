@@ -69,6 +69,13 @@ class CookieInspector(private val activity: Activity, private val button: Button
                     if (closed || nativeApp != host || !trusted(sender)) return GeckoResult.fromValue(false as Any)
                     try {
                         val data = message as JSONObject
+                        if (data.optString("type") == "cookieReadAudit") {
+                            keys(data, setOf("type", "id"))
+                            require(data.optInt("id") != 0 && data.optInt("id") in setOf(pending, authPending))
+                            val audit = activity.getSharedPreferences("cookie-audit", Activity.MODE_PRIVATE)
+                            check(audit.edit().putInt("read-attempts", audit.getInt("read-attempts", 0) + 1).commit())
+                            return GeckoResult.fromValue(true as Any)
+                        }
                         if (authPending != 0 && data.optInt("id") == authPending) {
                             authPending = 0
                             if (data.optString("type") == "authState") keys(data, setOf("type", "id", "state"))

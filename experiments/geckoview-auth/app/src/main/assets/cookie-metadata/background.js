@@ -26,6 +26,7 @@ function connect() {
       if (typeof browser.cookies?.getAll !== "function") throw new TypeError();
       // Empty partitionKey includes both partitioned and unpartitioned storage.
       // Null firstPartyDomain includes all first-party isolation contexts.
+      await browser.runtime.sendNativeMessage(HOST, {type:"cookieReadAudit", id:request.id});
       const raw = await browser.cookies.getAll({domain: "google.com", partitionKey: {}, firstPartyDomain: null});
       const scoped = raw.filter(c => domains.has(c.domain.replace(/^\./, "")));
       if (request.action === "auth") {
