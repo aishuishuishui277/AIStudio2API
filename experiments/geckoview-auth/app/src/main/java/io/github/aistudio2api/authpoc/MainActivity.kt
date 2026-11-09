@@ -22,6 +22,7 @@ class MainActivity : Activity() {
     private lateinit var back: Button
     private lateinit var forward: Button
     private var lastLoadError: String? = null
+    private lateinit var cookieInspector: CookieInspector
     private val sessions = mutableListOf<GeckoSession>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,6 +48,11 @@ class MainActivity : Activity() {
         button("刷新") { session.reload() }
         button("AI Studio") { session.loadUri(HOME) }
         root.addView(actions)
+        val cookieStatus = TextView(this).apply { textSize = 12f; setPadding(12, 0, 12, 4) }
+        val cookieButton = Button(this).apply { text = "检查登录 Cookie" }
+        root.addView(cookieButton)
+        root.addView(cookieStatus)
+        cookieInspector = CookieInspector(this, cookieButton, cookieStatus)
         root.addView(TextView(this).apply {
             text = "独立登录 PoC · 请手动登录\n页面加载 ≠ 登录成功；auth 未验证；不导出凭据"
             textSize = 12f
@@ -65,6 +71,7 @@ class MainActivity : Activity() {
         session.open(runtime!!)
         view.setSession(session)
         session.loadUri(HOME)
+        cookieInspector.install(runtime!!)
     }
 
     private fun createSession(): GeckoSession = GeckoSession().also { target ->
@@ -122,6 +129,7 @@ class MainActivity : Activity() {
     }
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
     override fun onDestroy() {
+        cookieInspector.close()
         view.releaseSession()
         sessions.forEach { it.close() }
         sessions.clear()
