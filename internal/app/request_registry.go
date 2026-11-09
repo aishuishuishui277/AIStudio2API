@@ -15,6 +15,8 @@ import (
 
 // requestRegistry 保存活动请求与事件订阅
 type requestRegistry struct {
+	// Set before use by the isolated probe; production defaults false.
+	silent      bool
 	mu          sync.Mutex
 	active      map[string]trackedRequest
 	logs        []api.AdminLog
@@ -162,6 +164,9 @@ func (registry *requestRegistry) log(source string, level string, message string
 
 // recordLog 将同一结构化事件发布到管理页面与控制台
 func (registry *requestRegistry) recordLog(entry api.AdminLog) {
+	if registry.silent {
+		return
+	}
 	entry.Time = time.Now().UTC()
 	registry.mu.Lock()
 	registry.logs = append(registry.logs, entry)

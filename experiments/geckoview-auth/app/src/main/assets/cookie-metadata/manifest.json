@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "AI Studio Cookie Metadata PoC",
-  "version": "1.0",
+  "version": "2.0",
   "browser_specific_settings": {"gecko": {"id": "cookie-metadata@aistudio2api.local"}},
   "permissions": ["cookies", "nativeMessaging", "geckoViewAddons", "https://google.com/*", "https://accounts.google.com/*", "https://aistudio.google.com/*"],
   "background": {"scripts": ["background.js"], "persistent": true},

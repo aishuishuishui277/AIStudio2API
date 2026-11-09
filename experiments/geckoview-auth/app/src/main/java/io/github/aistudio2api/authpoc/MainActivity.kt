@@ -23,6 +23,7 @@ class MainActivity : Activity() {
     private lateinit var forward: Button
     private var lastLoadError: String? = null
     private lateinit var cookieInspector: CookieInspector
+    private lateinit var authProbe: AuthProbeController
     private val sessions = mutableListOf<GeckoSession>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,8 +54,13 @@ class MainActivity : Activity() {
         root.addView(cookieButton)
         root.addView(cookieStatus)
         cookieInspector = CookieInspector(this, cookieButton, cookieStatus)
+        val authButton = Button(this).apply { text = "验证 PG 认证兼容性" }
+        val authStatus = TextView(this).apply { text = "3A 待用户主动触发；不自动读取真实 Cookie"; textSize = 12f }
+        root.addView(authButton)
+        root.addView(authStatus)
+        authProbe = AuthProbeController(this, authButton, authStatus, cookieInspector)
         root.addView(TextView(this).apply {
-            text = "独立登录 PoC · 请手动登录\n页面加载 ≠ 登录成功；auth 未验证；不导出凭据"
+            text = "独立 3A 实验 · 不访问稳定服务\n仅点击验证按钮后，在应用内部验证认证"
             textSize = 12f
             setPadding(12, 0, 12, 6)
         })
@@ -129,6 +135,7 @@ class MainActivity : Activity() {
     }
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
     override fun onDestroy() {
+        authProbe.close()
         cookieInspector.close()
         view.releaseSession()
         sessions.forEach { it.close() }

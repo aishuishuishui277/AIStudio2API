@@ -17,6 +17,15 @@ class CookieInspector(private val activity: Activity, private val button: Button
     private var extension: WebExtension? = null
     private var pending = 0
     private var sequence = 0
+    private var authPending = 0
+    var onAuthResult: ((JSONObject) -> Unit)? = null
+    fun requestAuth(): Boolean {
+        if (port == null || authPending != 0) return false
+        authPending = ++sequence
+        port!!.postMessage(JSONObject().put("action", "auth").put("id", authPending))
+        handler.postDelayed({ if(authPending != 0) { authPending=0; onAuthResult?.invoke(JSONObject().put("type","error").put("code","AUTH_MESSAGE_TIMEOUT")) } },15000)
+        return true
+    }
     private var closed = false
     private val extensionId = "cookie-metadata@aistudio2api.local"
     private val host = "cookie_metadata"
@@ -57,10 +66,17 @@ class CookieInspector(private val activity: Activity, private val button: Button
                     button.isEnabled = pending == 0
                 }
                 override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
-                    if (closed || nativeApp != host || !trusted(sender) || pending == 0) return GeckoResult.fromValue(false as Any)
+                    if (closed || nativeApp != host || !trusted(sender)) return GeckoResult.fromValue(false as Any)
                     try {
                         val data = message as JSONObject
-                        require(data.getInt("id") == pending)
+                        if (authPending != 0 && data.optInt("id") == authPending) {
+                            authPending = 0
+                            if (data.optString("type") == "authState") keys(data, setOf("type", "id", "state"))
+                            else { keys(data,setOf("type","id","code")); require(data.optString("type") == "error") }
+                            onAuthResult?.invoke(data)
+                            return GeckoResult.fromValue(true as Any)
+                        }
+                        require(pending != 0 && data.getInt("id") == pending)
                         if (data.getString("type") == "error") {
                             keys(data, setOf("type", "id", "code"))
                             require(data.getString("code") in setOf("COOKIE_QUERY_FAILED", "COOKIE_API_UNAVAILABLE"))

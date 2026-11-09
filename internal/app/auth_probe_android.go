@@ -1,0 +1,306 @@
+//go:build android && authpoc
+
+package app
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"log"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"time"
+
+	"github.com/Mag1cFall/AIStudio2API/internal/aistudio"
+	"github.com/Mag1cFall/AIStudio2API/internal/api"
+	"github.com/Mag1cFall/AIStudio2API/internal/chromeauth"
+	"github.com/Mag1cFall/AIStudio2API/internal/config"
+	"github.com/Mag1cFall/AIStudio2API/internal/i18n"
+)
+
+// RunAuthProbe is compiled only for the isolated :pgprobe process. All errors
+// cross JNI as fixed classifications, never as upstream text or Cookie data.
+func RunAuthProbe(directory string, key, raw []byte) (result map[string]any) {
+	result = map[string]any{"stage": "input", "success": false, "real_upstream": true}
+	defer clear(raw)
+	defer clear(key)
+	defer func() {
+		if recover() != nil {
+			result["error"] = "INTERNAL_FAILURE"
+		}
+	}()
+	i18n.Stdout, i18n.Stderr = io.Discard, io.Discard
+	log.SetOutput(io.Discard)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	fail := func(err error) map[string]any {
+		result["error"] = probeError(err)
+		types := []string{}
+		for next := err; next != nil && len(types) < 8; next = errors.Unwrap(next) {
+			types = append(types, reflect.TypeOf(next).String())
+		}
+		result["error_types"] = types
+		return result
+	}
+	if !filepath.IsAbs(directory) || len(key) != 32 || len(raw) > 256*1024 {
+		result["error"] = "INVALID_INPUT"
+		return
+	}
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return fail(err)
+	}
+	runDir, err := os.MkdirTemp(directory, "run-")
+	if err != nil {
+		return fail(err)
+	}
+	if err = os.Chdir(runDir); err != nil {
+		return fail(err)
+	}
+	if err = os.MkdirAll("tmp", 0700); err != nil {
+		return fail(err)
+	}
+	os.Setenv("TMPDIR", filepath.Join(runDir, "tmp"))
+	os.Setenv("XDG_CACHE_HOME", filepath.Join(runDir, "cache"))
+	os.Setenv("XDG_CONFIG_HOME", filepath.Join(runDir, "config"))
+	if err = aistudio.SetAndroidStorageKey(key); err != nil {
+		return fail(err)
+	}
+	// The existing parser discards unknown partition fields. Reject them first.
+	var document struct {
+		Cookies []struct {
+			Name             string          `json:"name"`
+			Value            string          `json:"value"`
+			Domain           string          `json:"domain"`
+			Path             string          `json:"path"`
+			HostOnly         bool            `json:"hostOnly"`
+			Secure           bool            `json:"secure"`
+			HTTPOnly         bool            `json:"httpOnly"`
+			SameSite         string          `json:"sameSite"`
+			Session          bool            `json:"session"`
+			Expires          float64         `json:"expires"`
+			PartitionKey     json.RawMessage `json:"partitionKey"`
+			FirstPartyDomain string          `json:"firstPartyDomain"`
+		} `json:"cookies"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(&document); err != nil {
+		result["error"] = "COOKIE_SCHEMA_INVALID"
+		return
+	}
+	if len(document.Cookies) == 0 {
+		result["error"] = "COOKIE_FIELDS_MISSING"
+		return
+	}
+	for _, c := range document.Cookies {
+		if len(c.PartitionKey) > 0 && string(c.PartitionKey) != "null" || c.FirstPartyDomain != "" {
+			result["error"] = "PARTITION_UNSUPPORTED"
+			return
+		}
+		if c.Domain != ".google.com" && c.Domain != "google.com" && c.Domain != "accounts.google.com" && c.Domain != ".accounts.google.com" && c.Domain != "aistudio.google.com" && c.Domain != ".aistudio.google.com" {
+			result["error"] = "COOKIE_DOMAIN_INVALID"
+			return
+		}
+		if c.Name == "" || c.Value == "" || !strings.HasPrefix(c.Path, "/") {
+			result["error"] = "COOKIE_FIELDS_MISSING"
+			return
+		}
+		if c.HostOnly && strings.HasPrefix(c.Domain, ".") {
+			result["error"] = "COOKIE_HOST_ONLY_CONFLICT"
+			return
+		}
+		if c.SameSite != "" && c.SameSite != "None" && c.SameSite != "Lax" && c.SameSite != "Strict" {
+			result["error"] = "COOKIE_SAMESITE_INVALID"
+			return
+		}
+		if !c.Session && c.Expires <= float64(time.Now().Unix()) {
+			result["error"] = "COOKIE_EXPIRED"
+			return
+		}
+		if c.Session && c.Expires != -1 {
+			result["error"] = "COOKIE_EXPIRY_INVALID"
+			return
+		}
+	}
+	state, err := aistudio.ParseCookieText(string(raw))
+	if err != nil {
+		return fail(err)
+	}
+	result["format_converted"] = true
+	result["cookie_count"] = len(state.Cookies)
+	if _, err = aistudio.NewSigner().Authorization(state); err != nil {
+		return fail(err)
+	}
+	result["core_accepted"] = true
+	result["stage"] = "runtime_initialization"
+	cfg := config.Default()
+	cfg.AuthStates = filepath.Join(runDir, "auth")
+	cfg.WAABackend = config.WAABackendSpiderMonkey
+	cfg.Proxy = "" // Use the existing per-app VPN route; no proxy or TLS changes.
+	cfg.UpstreamChannels = []string{"playground"}
+	cfg.LogFile = false
+	cfg.RequestBodyLog = false
+	cfg.WarmWorkerLimit = 1
+	cfg.MaxActiveWorkers = 1
+	cfg.WarmStartupConcurrency = 1
+	cfg.InitTimeout = 60 * time.Second
+	cfg.RequestTimeout = 60 * time.Second
+	cfg.FirstEventHedge = "off"
+	requests := newRequestRegistry(ctx)
+	requests.silent = true
+	service, admin, closeRuntime, err := newRuntime(ctx, ctx, cfg, requests)
+	if err != nil {
+		return fail(err)
+	}
+	defer func() { cancel(); closeRuntime() }()
+	result["stage"] = "account_identification_and_import"
+	account, err := admin.ImportAccountState(ctx, api.AccountStateInput{StorageState: state, AuthUser: 0})
+	if err != nil {
+		return fail(err)
+	}
+	result["account_identified"] = account.ID != "" // Never return account email.
+	result["encrypted_state_saved"] = true
+	catalog, _ := admin.CatalogModels(ctx)
+	catalogIDs := []string{}
+	for _, m := range catalog {
+		catalogIDs = append(catalogIDs, m.ID)
+	}
+	result["models_after_import"] = catalogIDs
+	result["stage"] = "model_catalog_and_waa"
+	models, _, err := service.Start(ctx, func() {})
+	if err != nil {
+		return fail(err)
+	}
+	result["waa_initialized"] = true
+	ids := make([]string, 0, len(models))
+	found := false
+	for _, m := range models {
+		ids = append(ids, m.ID)
+		if m.ID == "gemini-3.8-flash" {
+			found = true
+		}
+	}
+	result["models"] = ids
+	result["model_count"] = len(ids)
+	result["model_present"] = found
+	if !found {
+		result["error"] = "MODEL_NOT_AVAILABLE"
+		return
+	}
+	result["stage"] = "single_generation"
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return fail(err)
+	}
+	secret := make([]byte, 32)
+	if _, err = rand.Read(secret); err != nil {
+		listener.Close()
+		return fail(err)
+	}
+	token := hex.EncodeToString(secret)
+	clear(secret)
+	handler := api.NewHandler(service, api.Config{APIKey: token})
+	// Only expose generation and models. No admin/account export routes.
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" && r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}), ReadHeaderTimeout: 5 * time.Second, ErrorLog: log.New(io.Discard, "", 0)}
+	go server.Serve(listener)
+	defer server.Close()
+	result["listen_address"] = listener.Addr().String()
+	body := `{"model":"gemini-3.8-flash","messages":[{"role":"user","content":"Reply with exactly OK."}],"stream":false,"max_tokens":32}`
+	req, _ := http.NewRequestWithContext(ctx, "POST", "http://"+listener.Addr().String()+"/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	transport := &http.Transport{Proxy: nil}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 90 * time.Second}
+	response, err := client.Do(req)
+	if err != nil {
+		return fail(err)
+	}
+	defer response.Body.Close()
+	result["http_status"] = response.StatusCode
+	encoded, err := io.ReadAll(io.LimitReader(response.Body, 1024*1024))
+	if err != nil {
+		return fail(err)
+	}
+	defer clear(encoded)
+	if response.StatusCode != 200 {
+		result["error"] = probeError(errors.New(string(encoded)))
+		return
+	}
+	var completion struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(encoded, &completion) != nil || len(completion.Choices) == 0 || strings.TrimSpace(completion.Choices[0].Message.Content) == "" {
+		result["error"] = "EMPTY_OR_INVALID_GENERATION"
+		return
+	}
+	reply := strings.TrimSpace(completion.Choices[0].Message.Content)
+	result["valid_body"] = true
+	result["reply_bytes"] = len(reply)
+	if reply == "OK" {
+		result["reply"] = "OK"
+	} // Whitelist expected output only.
+	result["success"] = true
+	result["stage"] = "complete"
+	return
+}
+
+func probeError(err error) string {
+	if errors.Is(err, aistudio.ErrLoginCookieMissing) {
+		return "COOKIE_FIELDS_MISSING"
+	}
+	if errors.Is(err, chromeauth.ErrSignedOut) {
+		return "GOOGLE_SESSION_INVALID"
+	}
+	if errors.Is(err, os.ErrPermission) {
+		return "PRIVATE_STORAGE_PERMISSION"
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return "PRIVATE_STORAGE_MISSING"
+	}
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return "PRIVATE_STORAGE_FAILURE"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return "NETWORK_FAILURE"
+	}
+	s := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(s, "timeout"), strings.Contains(s, "deadline"), strings.Contains(s, "dial tcp"), strings.Contains(s, "no such host"):
+		return "NETWORK_OR_STAGE_TIMEOUT"
+	case strings.Contains(s, "drive"):
+		return "DRIVE_AUTHORIZATION_FAILED"
+	case strings.Contains(s, "waa"), strings.Contains(s, "spidermonkey"), strings.Contains(s, "botguard"):
+		return "WAA_INITIALIZATION_FAILED"
+	case strings.Contains(s, "401"), strings.Contains(s, "403"), strings.Contains(s, "permission"), strings.Contains(s, "unauthenticated"):
+		return "UPSTREAM_AUTH_REJECTED"
+	case strings.Contains(s, "邮箱"), strings.Contains(s, "email"):
+		return "ACCOUNT_IDENTITY_FAILED"
+	case strings.Contains(s, "signed_out"), strings.Contains(s, "未登录"), strings.Contains(s, "已失效"):
+		return "GOOGLE_SESSION_INVALID"
+	default:
+		return "STAGE_FAILED_UNCLASSIFIED"
+	}
+}

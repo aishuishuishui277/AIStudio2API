@@ -60,6 +60,7 @@ func googleCookieDomain(domain string) bool {
 
 // exportedCookie 是 Cookie-Editor 等扩展与 Playwright storage state 导出的 Cookie
 type exportedCookie struct {
+	HostOnly       bool     `json:"hostOnly"`
 	Name           string   `json:"name"`
 	Value          string   `json:"value"`
 	Domain         string   `json:"domain"`
@@ -106,7 +107,7 @@ func parseCookieJSON(text string) (StorageState, error) {
 			path = "/"
 		}
 		cookies = append(cookies, StateCookie{
-			Name: item.Name, Value: item.Value, Domain: item.Domain, Path: path, Expires: expires,
+			Name: item.Name, Value: item.Value, Domain: item.Domain, Path: path, Expires: expires, HostOnly: item.HostOnly,
 			HTTPOnly: item.HTTPOnly, Secure: item.Secure, SameSite: cookieSameSite(item.SameSite),
 		})
 	}

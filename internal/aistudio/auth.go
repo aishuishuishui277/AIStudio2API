@@ -18,6 +18,7 @@ import (
 
 // StateCookie 表示 Playwright storage state 中的 Cookie
 type StateCookie struct {
+	HostOnly     bool    `json:"hostOnly,omitempty"`
 	Name         string  `json:"name"`
 	Value        string  `json:"value"`
 	Domain       string  `json:"domain"`
@@ -218,6 +219,9 @@ func (s StorageState) CookieHeader(targetURL string, now time.Time) (string, err
 		if cookie.Secure && !strings.EqualFold(target.Scheme, "https") {
 			continue
 		}
+		if cookie.HostOnly && !strings.EqualFold(strings.TrimPrefix(cookie.Domain, "."), target.Hostname()) {
+			continue
+		}
 		if !cookieDomainMatches(cookie.Domain, target.Hostname()) || !cookiePathMatches(cookie.Path, target.EscapedPath()) {
 			continue
 		}
@@ -252,6 +256,9 @@ func (s StorageState) CookieValue(name string, targetURL string, now time.Time) 
 			continue
 		}
 		if cookie.Secure && !strings.EqualFold(target.Scheme, "https") {
+			continue
+		}
+		if cookie.HostOnly && !strings.EqualFold(strings.TrimPrefix(cookie.Domain, "."), target.Hostname()) {
 			continue
 		}
 		if !cookieDomainMatches(cookie.Domain, target.Hostname()) || !cookiePathMatches(cookie.Path, target.EscapedPath()) {
@@ -306,6 +313,7 @@ func (s *StorageState) MergeSetCookieHeaders(headers []string, sourceURL string,
 			expires = float64(incoming.Expires.UnixNano()) / 1e9
 		}
 		s.Cookies = append(s.Cookies, StateCookie{
+			HostOnly: incoming.Domain == "",
 			Name:     incoming.Name,
 			Value:    incoming.Value,
 			Domain:   domain,
