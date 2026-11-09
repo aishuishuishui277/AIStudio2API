@@ -1,12 +1,14 @@
 # Android GeckoView 登录 PoC
 
+第二阶段已完成：用户手动登录及 Playground 生成成功；在 vivo V2444A 上实测内置扩展、Native Messaging 和 23 个 Google Cookie 的无值元数据读取。升级、冷启动后均保留 Playground 会话。详见 [第二阶段报告](COOKIE_METADATA_REPORT.md)。第一阶段 `TEST_REPORT.md` 的网络阻塞结论是历史记录，已被新实测更新。真实 auth 导出/导入仍未实施。
+
 ## 隔离和验收边界
 
 基线 `58095c55e80aa2d415d172fe9c416a22feb1285d`，包含 `ff9b928` 及后续双模型功能。实验分支 `feature/android-geckoview-auth-poc`，独立 worktree，不合并稳定分支。
 
 独立 ID `io.github.aistudio2api.authpoc`，独立 UID 和 Gecko 私有 profile。应用声明 INTERNET；Gecko 依赖合并 NETWORK_STATE、WAKE_LOCK、MODIFY_AUDIO_SETTINGS 等普通权限，没有申请账号、文件或运行时危险权限。不包含 Go/SpiderMonkey，不访问稳定应用的 API、文件或 Keystore。关闭 Android backup。Gecko Cookie 数据库属于浏览器私有数据；本轮没有额外实现数据库 Keystore 加密，不能声称与正式账号存储同等保护。
 
-默认 Gecko UA、正常 TLS、无证书例外；关闭远程调试、控制台转发和 debug logging。诊断只显示域名和错误码，不记录 URL 参数、标题、HTML、密码或 Cookie。Google 账号输入和验证由用户手动完成；交接后不自动截屏、dump UI、抓完整 logcat 或复制 profile。
+默认 Gecko UA、正常 TLS、无证书例外；关闭远程调试、控制台转发和 debug logging。不记录 URL 参数、标题、HTML、密码或 Cookie 值。第二阶段只有手动点击“检查登录 Cookie”才读取元数据，结果显示在对话框，并保存在应用私有 `files/cookie-metadata.json`（不含值）。Google 账号输入和验证仍由用户手动完成；输入期间不自动截屏、dump UI、抓完整 logcat 或复制 profile。
 
 四级验收独立记录：编译通过、页面加载、Google 登录成功、auth 可用于生成服务。前一级成功不能替代后一级。本轮不向正式生成服务导入凭据。Google 明确拒绝嵌入式登录时停止；最多三轮修复，不反复切换 UA。
 
@@ -34,7 +36,7 @@
 - [WebExtensions](https://firefox-source-docs.mozilla.org/mobile/android/geckoview/consumer/web-extensions.html)：APK assets 内置扩展和 `ensureBuiltIn`；后台脚本的 `geckoViewAddons` + `nativeMessaging` 与原生 MessageDelegate 通信，不需要内容脚本权限。
 - [cookies.getAll](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/cookies/getAll)：cookies 和对应 host 权限。文档支持不等于实机已验证。
 
-用户登录并到达实际 AI Studio 工作页面后，再加入最小扩展。限定 Google host 权限、手动触发一次扫描。在扩展内投影为无值白名单再发送消息；只允许数量、名称、domain/path、secure/httpOnly/session/SameSite/expiry 等属性及结构校验结果。接收侧再次白名单校验。禁止发送 value、原始 Cookie 对象、localStorage 或任意异常对象。以合成敏感值验证不会泄漏到消息、日志和工件。Cookie API 成功仍不代表 auth 可用。
+第二阶段扩展已经实现并完成真实设备测试。限定三个 Google host 权限、手动触发一次扫描，在扩展内投影为无值白名单再发送消息；接收侧再次校验。expiry/partition 仅报告存在性，不传输具体内容。禁止发送 value、原始 Cookie 对象、localStorage 或任意异常对象。另有合成 getter 防护检查作为补充，不替代实机结果。Cookie API 成功仍不代表 auth 可用。
 
 ## 构建
 
@@ -42,7 +44,7 @@
 
 ```powershell
 .\android\gradlew.bat -p experiments/geckoview-auth assembleDebug lintDebug --console=plain
-adb install experiments/geckoview-auth/app/build/outputs/apk/debug/app-debug.apk
+adb install -r experiments/geckoview-auth/app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n io.github.aistudio2api.authpoc/.MainActivity
 ```
 
